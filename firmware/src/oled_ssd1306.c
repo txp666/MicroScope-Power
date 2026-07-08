@@ -7,8 +7,6 @@
 #include <string.h>
 
 #define OLED_ADDR 0x3cu
-#define OLED_WIDTH 128u
-#define OLED_PAGES 8u
 #define OLED_CONTROLLER_X_OFFSET 2u
 #define OLED_TEXT_X_OFFSET 2u
 #define OLED_CMD 0x00u
@@ -16,7 +14,9 @@
 #define OLED_TIMEOUT_US 5000u
 
 static char g_line_cache[OLED_PAGES][OLED_TEXT_COLS];
+static uint8_t g_frame_cache[OLED_PAGES][OLED_WIDTH];
 static bool g_cache_valid = false;
+static bool g_frame_cache_valid = false;
 
 static bool oled_write_bytes(const uint8_t *data, uint32_t len) {
     int written = i2c_write_timeout_us(POWER_I2C_PORT, OLED_ADDR, data, len, false, OLED_TIMEOUT_US);
@@ -104,6 +104,18 @@ static uint8_t glyph_col(char c, uint8_t col) {
     }
 }
 
+uint8_t oled_glyph_column(char c, uint8_t col) {
+    return glyph_col(c, col);
+}
+
+static bool oled_frame_page_same(uint8_t page, const uint8_t *data) {
+    return memcmp(g_frame_cache[page], data, OLED_WIDTH) == 0;
+}
+
+static void oled_save_frame_page(uint8_t page, const uint8_t *data) {
+    memcpy(g_frame_cache[page], data, OLED_WIDTH);
+}
+
 static bool oled_set_page(uint8_t page, uint8_t col) {
     col = (uint8_t)(col + OLED_CONTROLLER_X_OFFSET);
     return oled_cmd3((uint8_t)(0xb0u | page), (uint8_t)(col & 0x0fu), (uint8_t)(0x10u | (col >> 4u)));
@@ -125,6 +137,7 @@ bool oled_init(void) {
     };
 
     g_cache_valid = false;
+    g_frame_cache_valid = false;
     if (!oled_write_bytes(init, sizeof(init))) {
         return false;
     }
@@ -141,8 +154,10 @@ void oled_clear(void) {
     for (uint8_t page = 0; page < OLED_PAGES; ++page) {
         ok = oled_set_page(page, 0) && oled_write_bytes(data, sizeof(data)) && ok;
         memset(g_line_cache[page], ' ', OLED_TEXT_COLS);
+        memset(g_frame_cache[page], 0, OLED_WIDTH);
     }
     g_cache_valid = ok;
+    g_frame_cache_valid = ok;
 }
 
 void oled_clear_line(uint8_t page) {
@@ -157,8 +172,10 @@ void oled_clear_line(uint8_t page) {
     if (oled_set_page(page, 0) && oled_write_bytes(data, sizeof(data))) {
         memset(g_line_cache[page], ' ', OLED_TEXT_COLS);
         g_cache_valid = true;
+        g_frame_cache_valid = false;
     } else {
         g_cache_valid = false;
+        g_frame_cache_valid = false;
     }
 }
 
@@ -203,10 +220,15 @@ void oled_write_line(uint8_t page, const char *text) {
     if (oled_write_bytes(data, sizeof(data))) {
         memcpy(g_line_cache[page], line, OLED_TEXT_COLS);
         g_cache_valid = true;
+        g_frame_cache_valid = false;
     }
 }
 
 void oled_write_line2x(uint8_t page, const char *text) {
+    oled_write_line2x_with_right_text(page, text, NULL);
+}
+
+void oled_write_line2x_with_right_text(uint8_t page, const char *text, const char *right_text) {
     if (page + 1u >= OLED_PAGES) {
         return;
     }
@@ -246,8 +268,53 @@ void oled_write_line2x(uint8_t page, const char *text) {
             data[pos++] = 0x00;
         }
 
+        if (half == 0u && right_text && right_text[0]) {
+            uint8_t right_len = 0;
+            while (right_text[right_len] && right_len < 5u) {
+                ++right_len;
+            }
+            uint8_t right_x = (uint8_t)(OLED_WIDTH - 2u - (uint8_t)(right_len * 6u));
+            uint16_t note_pos = (uint16_t)(1u + right_x);
+            for (uint8_t i = 0; i < right_len && note_pos + 6u <= sizeof(data); ++i) {
+                for (uint8_t col = 0; col < 5u; ++col) {
+                    data[note_pos++] |= glyph_col(right_text[i], col);
+                }
+                data[note_pos++] |= 0x00;
+            }
+        }
+
         oled_set_page((uint8_t)(page + half), 0);
         oled_write_bytes(data, sizeof(data));
         memset(g_line_cache[page + half], 0, OLED_TEXT_COLS);
     }
+    g_frame_cache_valid = false;
+}
+
+void oled_write_frame(const uint8_t *frame) {
+    if (!frame) {
+        return;
+    }
+
+    bool ok = true;
+    bool cache_was_valid = g_frame_cache_valid;
+
+    for (uint8_t page = 0; page < OLED_PAGES; ++page) {
+        const uint8_t *page_data = &frame[(uint32_t)page * OLED_WIDTH];
+        if (cache_was_valid && oled_frame_page_same(page, page_data)) {
+            continue;
+        }
+
+        uint8_t data[1 + OLED_WIDTH];
+        data[0] = OLED_DATA;
+        memcpy(data + 1, page_data, OLED_WIDTH);
+
+        if (oled_set_page(page, 0) && oled_write_bytes(data, sizeof(data))) {
+            oled_save_frame_page(page, page_data);
+        } else {
+            ok = false;
+        }
+    }
+
+    g_frame_cache_valid = ok;
+    g_cache_valid = false;
 }

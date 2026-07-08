@@ -11,6 +11,8 @@
 #include "pico/bootrom.h"
 #include "pico/stdlib.h"
 
+#include "hardware/gpio.h"
+
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,6 +21,8 @@
 #ifndef PICO_POWER_SCOPE_VERSION
 #define PICO_POWER_SCOPE_VERSION "dev"
 #endif
+
+#define BOOTSEL_ENCODER_HOLD_MS 1000u
 
 typedef enum {
     APP_BOOT = 0,
@@ -30,6 +34,20 @@ typedef enum {
 
 static app_state_t g_state = APP_BOOT;
 static bool g_settings_save_pending = false;
+
+static bool encoder_key_held_at_boot(void) {
+    gpio_init(ENCODER_PIN_KEY);
+    gpio_set_dir(ENCODER_PIN_KEY, GPIO_IN);
+    gpio_pull_up(ENCODER_PIN_KEY);
+
+    sleep_ms(5);
+    if (gpio_get(ENCODER_PIN_KEY)) {
+        return false;
+    }
+
+    sleep_ms(BOOTSEL_ENCODER_HOLD_MS);
+    return !gpio_get(ENCODER_PIN_KEY);
+}
 
 static const char *app_state_name(app_state_t state) {
     switch (state) {
@@ -316,13 +334,17 @@ static void service_wave_tx(void) {
 
 int main(void) {
     app_board_init();
+    if (encoder_key_held_at_boot()) {
+        reset_usb_boot(0, 0);
+    }
+
     usb_webusb_init();
     power_output_init();
     adc_voltage_init();
     ads8866_init();
     load_saved_settings();
-    local_ui_init();
     sampler_init();
+    local_ui_init();
 
     g_state = APP_USB_WAIT;
 

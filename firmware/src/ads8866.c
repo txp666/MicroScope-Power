@@ -8,8 +8,10 @@
 
 #define ADS8866_CS_TO_MSB_WAIT_CYCLES 16u
 #define ADS8866_SPI_RUN_BAUD_HZ 24000000u
+#define ADS8866_SPI_READ_TIMEOUT_US 1000u
 
 static ads8866_range_t g_range = ADS8866_RANGE_10_OHM;
+static uint16_t g_last_sample = 0u;
 
 static void drain_spi_rx(void) {
     while (spi_is_readable(ADS8866_SPI_PORT)) {
@@ -17,11 +19,27 @@ static void drain_spi_rx(void) {
     }
 }
 
-static uint16_t read_spi16(void) {
-    uint16_t value = 0u;
+static bool read_spi16(uint16_t *value_out) {
     drain_spi_rx();
-    spi_read16_blocking(ADS8866_SPI_PORT, 0u, &value, 1);
-    return value;
+
+    absolute_time_t deadline = make_timeout_time_us(ADS8866_SPI_READ_TIMEOUT_US);
+    while (!spi_is_writable(ADS8866_SPI_PORT)) {
+        if (time_reached(deadline)) {
+            return false;
+        }
+        tight_loop_contents();
+    }
+
+    spi_get_hw(ADS8866_SPI_PORT)->dr = 0u;
+    while (!spi_is_readable(ADS8866_SPI_PORT)) {
+        if (time_reached(deadline)) {
+            return false;
+        }
+        tight_loop_contents();
+    }
+
+    *value_out = (uint16_t)spi_get_hw(ADS8866_SPI_PORT)->dr;
+    return true;
 }
 
 void ads8866_init(void) {
@@ -57,7 +75,10 @@ void ads8866_start_conversion(void) {
 uint16_t ads8866_finish_conversion(void) {
     gpio_put(ADS8866_PIN_CS, 0);
     busy_wait_at_least_cycles(ADS8866_CS_TO_MSB_WAIT_CYCLES);
-    uint16_t value = read_spi16();
+    uint16_t value = g_last_sample;
+    if (read_spi16(&value)) {
+        g_last_sample = value;
+    }
     gpio_put(ADS8866_PIN_MOSI, 1);
     return value;
 }

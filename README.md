@@ -21,9 +21,11 @@ RP2040 / Raspberry Pi Pico 电流波形采集固件和 WebUSB 上位机。固件
   - 小量程：默认 `10Ω`。
 - 两个量程独立零点、独立采样电阻。
 - 零点、两个电阻值、DAC 输出电压断电保存到 Pico flash。
-- OLED 本地显示输出电压和空闲电流；上位机采集运行时本地不抢 ADS8866。
-- DAC/LDO 输出通过本地旋钮调节，输出电压带滤波显示。
-- 上位机可让 Pico 进入 BOOTSEL/U盘模式，免按 BOOTSEL 按键升级 UF2。
+- OLED 本地显示输出电压和空闲电流；输出电压按两位小数显示，右侧显示当前旋钮步进。
+- OLED 开机动画和短提示音；上位机采集运行时本地不抢 ADS8866。
+- DAC/LDO 输出通过本地旋钮调节，常用步进 `0.01 / 0.1 / 1 V`，输出电压带滤波显示。
+- 上位机可让 Pico 进入 BOOTSEL/U盘模式，按住滚轮按键上电也可进入 BOOTSEL 升级 UF2。
+- ADS8866 本地读取带超时保护，避免空闲显示路径卡住主循环。
 - 网页端支持清屏、归零、暂停显示、自由缩放和平移、CSV/PNG 导出。
 
 ## 硬件默认引脚
@@ -72,8 +74,8 @@ GitHub Actions 会在 push、PR 和手动触发时编译固件，并上传构建
 打 `v*` tag 会自动创建 GitHub Release，并把固件产物作为 release assets 上传：
 
 ```powershell
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
 Release assets 包含：
@@ -86,7 +88,7 @@ Release assets 包含：
 - `pico_power_scope-<version>.txt`
 - `SHA256SUMS.txt`
 
-固件版本来自 tag，例如 `v0.1.0` 会注入 `fw=0.1.0`；普通分支构建会使用 `VERSION+commit`。
+固件版本来自 tag，例如 `v0.2.0` 会注入 `fw=0.2.0`；普通分支构建会使用 `VERSION+commit`。
 
 ## 启动上位机
 
