@@ -1,0 +1,14 @@
+build/
+firmware/build/
+output/
+.agents/
+.vscode/.cmake/
+*.elf
+*.bin
+*.hex
+*.uf2
+*.map
+*.dis
+*.o
+*.obj
+.playwright-cli/
