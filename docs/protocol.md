@@ -61,6 +61,9 @@ typedef struct __attribute__((packed)) {
 | `START` | 开始采样 |
 | `STOP` | 停止采样 |
 | `RESET` | 停止采样并回到空闲 |
+| `BOOTSEL` | 停止采样并重启到 Pico BOOTSEL/U盘升级模式 |
+| `OTA` | `BOOTSEL` 的别名 |
+| `REBOOT_BOOTSEL` | `BOOTSEL` 的别名 |
 | `SRATE 10000` | 设置 10kSPS |
 | `SRATE 20000` | 设置 20kSPS |
 | `SRATE 50000` | 设置 50kSPS |
@@ -80,6 +83,9 @@ typedef struct __attribute__((packed)) {
 示例：
 
 ```text
+OK
+ERR <code>
+OK BOOTSEL
 STATUS state=IDLE srate=100000 source=ADC dropped=0 seq=0 zero=0 zero1=0 zero10=0 last=0 range=10 auto_range=1 sense1_mohm=1000 sense10_mohm=10000 vdac_mv=0
 ```
 
@@ -139,3 +145,14 @@ if (delta > 1) dropped += delta - 1;
 - DAC 输出电压。
 
 保存请求在采集停止/空闲时处理；采集运行时不写 flash。
+
+## 固件升级
+
+当前“OTA”实现为 WebUSB 触发 BOOTSEL：
+
+1. 网页发送 `BOOTSEL`。
+2. 固件停止采样，返回 `OK BOOTSEL`。
+3. Pico 调用 `reset_usb_boot(0, 0)` 重启到 ROM BOOTSEL。
+4. 电脑出现 Pico U 盘后，拷贝新的 UF2。
+
+这不是边运行边覆盖 flash 的网络 OTA。RP2040 当前硬件没有网络链路，直接在应用运行时覆盖自身 flash 风险较高，因此采用 BOOTSEL 升级路径。

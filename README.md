@@ -23,6 +23,7 @@ RP2040 / Raspberry Pi Pico 电流波形采集固件和 WebUSB 上位机。固件
 - 零点、两个电阻值、DAC 输出电压断电保存到 Pico flash。
 - OLED 本地显示输出电压和空闲电流；上位机采集运行时本地不抢 ADS8866。
 - DAC/LDO 输出通过本地旋钮调节，输出电压带滤波显示。
+- 上位机可让 Pico 进入 BOOTSEL/U盘模式，免按 BOOTSEL 按键升级 UF2。
 - 网页端支持清屏、归零、暂停显示、自由缩放和平移、CSV/PNG 导出。
 
 ## 硬件默认引脚
@@ -62,6 +63,8 @@ build/firmware-ninja/pico_power_scope.uf2
 
 按住 Pico `BOOTSEL` 插入电脑，把 UF2 拷贝到弹出的 Pico 盘符即可烧录。
 
+已烧录过本固件后，也可以在网页上位机点击“固件升级”，让 Pico 自动重启到 BOOTSEL/U盘模式，再拷贝新的 UF2。
+
 ## 启动上位机
 
 WebUSB 需要安全上下文，使用本地 HTTP 服务打开：
@@ -93,4 +96,3 @@ http://127.0.0.1:8000/
 ## 协议
 
 WebUSB 命令和二进制帧格式见 [docs/protocol.md](docs/protocol.md)。
-

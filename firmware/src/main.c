@@ -8,6 +8,7 @@
 #include "sampler.h"
 #include "usb_webusb.h"
 
+#include "pico/bootrom.h"
 #include "pico/stdlib.h"
 
 #include <ctype.h>
@@ -176,6 +177,15 @@ static void handle_command(char *cmd) {
         sampler_stop();
         g_state = usb_webusb_connected() ? APP_IDLE : APP_USB_WAIT;
         send_ok();
+        return;
+    }
+
+    if (strcmp(cmd, "BOOTSEL") == 0 || strcmp(cmd, "OTA") == 0 || strcmp(cmd, "REBOOT_BOOTSEL") == 0) {
+        sampler_stop();
+        g_state = APP_IDLE;
+        usb_webusb_send_text("OK BOOTSEL\n");
+        sleep_ms(100);
+        reset_usb_boot(0, 0);
         return;
     }
 

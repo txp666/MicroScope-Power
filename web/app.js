@@ -32,6 +32,7 @@ const dom = {
   connectionLabel: document.querySelector("#connectionLabel"),
   connectBtn: document.querySelector("#connectBtn"),
   disconnectBtn: document.querySelector("#disconnectBtn"),
+  bootloaderBtn: document.querySelector("#bootloaderBtn"),
   startBtn: document.querySelector("#startBtn"),
   stopBtn: document.querySelector("#stopBtn"),
   sampleRateSelect: document.querySelector("#sampleRateSelect"),
@@ -173,6 +174,7 @@ function setConnectedUi(connected) {
   dom.connectionLabel.classList.toggle("connected", connected);
   dom.connectBtn.disabled = connected;
   dom.disconnectBtn.disabled = !connected;
+  dom.bootloaderBtn.disabled = !connected;
   dom.startBtn.disabled = !connected;
   dom.stopBtn.disabled = !connected;
   dom.zeroNowBtn.disabled = !connected;
@@ -272,6 +274,27 @@ async function stopCapture() {
   await sendCommand("STOP");
   setState("IDLE");
   appendLog("采集已停止。");
+}
+
+async function enterBootloader() {
+  if (!device || !device.opened) {
+    appendLog("设备未连接。");
+    return;
+  }
+
+  const confirmed = window.confirm("设备将停止采集并重启到 BOOTSEL/U盘升级模式。之后把新的 UF2 拷贝到 Pico 盘符即可。继续？");
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    await sendCommand("STOP");
+  } catch {
+  }
+  await sendCommand("BOOTSEL");
+  appendLog("已请求进入 BOOTSEL 升级模式，等待设备断开。");
+  reading = false;
+  setTimeout(() => cleanupDevice(), 300);
 }
 
 async function sendCommand(text) {
@@ -1126,6 +1149,7 @@ function animationLoop(now = performance.now()) {
 
 dom.connectBtn.addEventListener("click", () => connectDevice());
 dom.disconnectBtn.addEventListener("click", () => disconnectDevice());
+dom.bootloaderBtn.addEventListener("click", () => enterBootloader().catch((err) => appendLog(err.message)));
 dom.startBtn.addEventListener("click", () => startCapture().catch((err) => appendLog(err.message)));
 dom.stopBtn.addEventListener("click", () => stopCapture().catch((err) => appendLog(err.message)));
 dom.applyCalBtn.addEventListener("click", () => applyCalibration().catch((err) => appendLog(err.message)));

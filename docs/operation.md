@@ -12,6 +12,15 @@
 3. 将 `build/firmware-ninja/pico_power_scope.uf2` 拷贝到 Pico 盘符。
 4. Pico 自动重启后进入 WebUSB 设备模式。
 
+已烧录过本固件后，可以不用按 BOOTSEL：
+
+1. 打开网页并连接设备。
+2. 点击顶部“固件升级”。
+3. 确认后设备会停止采集并重启到 BOOTSEL/U盘模式。
+4. 把新的 UF2 拷贝到 Pico 盘符。
+
+这一路径只是免按键进入 ROM bootloader，不是边运行边写自身 flash 的网络 OTA。
+
 ## 打开上位机
 
 ```powershell
