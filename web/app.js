@@ -73,6 +73,7 @@ const dom = {
   viewLabel: document.querySelector("#viewLabel"),
   cursorLabel: document.querySelector("#cursorLabel"),
   stateValue: document.querySelector("#stateValue"),
+  firmwareValue: document.querySelector("#firmwareValue"),
   sampleRateValue: document.querySelector("#sampleRateValue"),
   modeValue: document.querySelector("#modeValue"),
   rangeValue: document.querySelector("#rangeValue"),
@@ -258,6 +259,7 @@ async function cleanupDevice() {
   parser.reset();
   setConnectedUi(false);
   setState("IDLE");
+  dom.firmwareValue.textContent = "-";
 }
 
 async function startCapture() {
@@ -343,6 +345,7 @@ function handleText(text) {
     );
 
     if (fields.state) setState(fields.state);
+    if (fields.fw) dom.firmwareValue.textContent = fields.fw;
     if (fields.srate) sampleRate = Number(fields.srate);
     if (fields.dropped) droppedFrames = Number(fields.dropped);
     if (fields.range) {

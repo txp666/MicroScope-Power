@@ -65,6 +65,29 @@ build/firmware-ninja/pico_power_scope.uf2
 
 已烧录过本固件后，也可以在网页上位机点击“固件升级”，让 Pico 自动重启到 BOOTSEL/U盘模式，再拷贝新的 UF2。
 
+## CI 和 Release
+
+GitHub Actions 会在 push、PR 和手动触发时编译固件，并上传构建 artifact。
+
+打 `v*` tag 会自动创建 GitHub Release，并把固件产物作为 release assets 上传：
+
+```powershell
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Release assets 包含：
+
+- `pico_power_scope-<version>.uf2`
+- `pico_power_scope-<version>.elf`
+- `pico_power_scope-<version>.bin`
+- `pico_power_scope-<version>.hex`
+- `pico_power_scope-<version>.map`
+- `pico_power_scope-<version>.txt`
+- `SHA256SUMS.txt`
+
+固件版本来自 tag，例如 `v0.1.0` 会注入 `fw=0.1.0`；普通分支构建会使用 `VERSION+commit`。
+
 ## 启动上位机
 
 WebUSB 需要安全上下文，使用本地 HTTP 服务打开：

@@ -86,7 +86,7 @@ typedef struct __attribute__((packed)) {
 OK
 ERR <code>
 OK BOOTSEL
-STATUS state=IDLE srate=100000 source=ADC dropped=0 seq=0 zero=0 zero1=0 zero10=0 last=0 range=10 auto_range=1 sense1_mohm=1000 sense10_mohm=10000 vdac_mv=0
+STATUS state=IDLE fw=0.1.0 srate=100000 source=ADC dropped=0 seq=0 zero=0 zero1=0 zero10=0 last=0 range=10 auto_range=1 sense1_mohm=1000 sense10_mohm=10000 vdac_mv=0
 ```
 
 字段说明：
@@ -94,6 +94,7 @@ STATUS state=IDLE srate=100000 source=ADC dropped=0 seq=0 zero=0 zero1=0 zero10=
 | 字段 | 说明 |
 | --- | --- |
 | `state` | `BOOT` / `USB_WAIT` / `IDLE` / `RUNNING` / `FAULT` |
+| `fw` | 固件版本，来自 `VERSION` 或 CI tag |
 | `srate` | 当前采样率 |
 | `dropped` | 固件累计丢帧数 |
 | `seq` | 下一帧序号 |

@@ -21,6 +21,17 @@
 
 这一路径只是免按键进入 ROM bootloader，不是边运行边写自身 flash 的网络 OTA。
 
+## 发布版本
+
+CI 会自动构建固件。普通 push/PR 只生成 Actions artifact；打 `v*` tag 会创建 GitHub Release 并上传固件资产。
+
+```powershell
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+固件中的版本字段来自 tag。网页连接设备后，“状态”卡片会显示固件版本。
+
 ## 打开上位机
 
 ```powershell

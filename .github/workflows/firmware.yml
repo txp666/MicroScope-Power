@@ -1,0 +1,95 @@
+name: Firmware
+
+on:
+  push:
+    branches:
+      - master
+      - main
+    tags:
+      - "v*"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build firmware
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build gcc-arm-none-eabi libnewlib-arm-none-eabi
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            APP_VERSION="${GITHUB_REF_NAME#v}"
+          else
+            APP_VERSION="$(tr -d '[:space:]' < VERSION)+${GITHUB_SHA::7}"
+          fi
+          echo "app_version=${APP_VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "APP_VERSION=${APP_VERSION}" >> "${GITHUB_ENV}"
+
+      - name: Configure
+        run: |
+          cmake -S firmware -B build/firmware-ninja -G Ninja \
+            -DPICO_SDK_PATH="${GITHUB_WORKSPACE}/third_party/pico-sdk" \
+            -DAPP_VERSION="${APP_VERSION}" \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build/firmware-ninja --parallel
+
+      - name: Check web JavaScript
+        run: node --check web/app.js
+
+      - name: Package firmware
+        shell: bash
+        run: |
+          mkdir -p dist
+          base="pico_power_scope-${APP_VERSION}"
+          cp build/firmware-ninja/pico_power_scope.uf2 "dist/${base}.uf2"
+          cp build/firmware-ninja/pico_power_scope.elf "dist/${base}.elf"
+          cp build/firmware-ninja/pico_power_scope.bin "dist/${base}.bin"
+          cp build/firmware-ninja/pico_power_scope.hex "dist/${base}.hex"
+          cp build/firmware-ninja/pico_power_scope.elf.map "dist/${base}.map"
+          {
+            echo "version=${APP_VERSION}"
+            echo "commit=${GITHUB_SHA}"
+            echo "ref=${GITHUB_REF_NAME}"
+            echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } > "dist/${base}.txt"
+          (cd dist && sha256sum * > SHA256SUMS.txt)
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pico_power_scope-${{ steps.version.outputs.app_version }}
+          path: dist/*
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" dist/* --clobber
+          else
+            gh release create "${GITHUB_REF_NAME}" dist/* \
+              --title "MicroScope-Power ${GITHUB_REF_NAME}" \
+              --notes "Firmware build ${APP_VERSION}"
+          fi

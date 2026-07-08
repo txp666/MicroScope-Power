@@ -16,6 +16,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifndef PICO_POWER_SCOPE_VERSION
+#define PICO_POWER_SCOPE_VERSION "dev"
+#endif
+
 typedef enum {
     APP_BOOT = 0,
     APP_USB_WAIT,
@@ -130,10 +134,11 @@ static void request_settings_save(void) {
 }
 
 static void send_status(void) {
-    char line[352];
+    char line[384];
     snprintf(line, sizeof(line),
-             "STATUS state=%s srate=%lu source=ADC dropped=%lu seq=%u zero=%u zero1=%u zero10=%u last=%u range=%u auto_range=%u sense1_mohm=%lu sense10_mohm=%lu vdac_mv=%u\n",
+             "STATUS state=%s fw=%s srate=%lu source=ADC dropped=%lu seq=%u zero=%u zero1=%u zero10=%u last=%u range=%u auto_range=%u sense1_mohm=%lu sense10_mohm=%lu vdac_mv=%u\n",
              app_state_name(g_state),
+             PICO_POWER_SCOPE_VERSION,
              (unsigned long)sampler_get_rate(),
              (unsigned long)sampler_get_dropped(),
              sampler_get_next_seq(),

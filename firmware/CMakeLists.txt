@@ -2,12 +2,17 @@ cmake_minimum_required(VERSION 3.13)
 
 include(pico_sdk_import.cmake)
 
-project(pico_power_scope_v0 C CXX ASM)
+project(pico_power_scope C CXX ASM)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
 pico_sdk_init()
+
+if(NOT DEFINED APP_VERSION)
+    file(READ "${CMAKE_CURRENT_LIST_DIR}/../VERSION" APP_VERSION)
+    string(STRIP "${APP_VERSION}" APP_VERSION)
+endif()
 
 add_executable(pico_power_scope
     src/main.c
@@ -37,6 +42,7 @@ target_compile_options(pico_power_scope PRIVATE
 target_compile_definitions(pico_power_scope PRIVATE
     PICO_STDIO_USB_CONNECTION_WITHOUT_DTR=1
     PICO_STDIO_USB_STDOUT_TIMEOUT_US=10000
+    PICO_POWER_SCOPE_VERSION="${APP_VERSION}"
 )
 
 target_link_libraries(pico_power_scope PRIVATE
