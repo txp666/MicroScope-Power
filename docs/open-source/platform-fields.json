@@ -1,0 +1,13 @@
+{
+  "title": "MicroScope Power｜便携式可调电源与微电流波形分析仪",
+  "introduction": "最高配置100kSPS、标称约0.8–5V可调供电，基于RP2040与16位ADS8866，支持1Ω/10Ω双量程、OLED和WebUSB波形分析，用于单片机休眠唤醒测试。",
+  "tags": [
+    "星火计划2026",
+    "树莓派",
+    "测量仪表",
+    "DIY设计",
+    "3D打印"
+  ],
+  "body_file": "article.md",
+  "replication_cost": "retain_existing"
+}

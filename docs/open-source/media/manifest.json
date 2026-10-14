@@ -1,0 +1,55 @@
+{
+  "date": "2026-10-14",
+  "style": "clean white engineering; exact real photographs and vector typography; generated background not used",
+  "entries": [
+    {
+      "name": "01-cover",
+      "title": "开源封面",
+      "width": 2300,
+      "height": 1600,
+      "jpegBytes": 311652
+    },
+    {
+      "name": "02-hardware",
+      "title": "硬件实物与功能",
+      "width": 2400,
+      "height": 1550,
+      "jpegBytes": 293481
+    },
+    {
+      "name": "03-system",
+      "title": "电源与采样系统框图",
+      "width": 2400,
+      "height": 1530,
+      "jpegBytes": 210806
+    },
+    {
+      "name": "04-current",
+      "title": "双量程采样原理",
+      "width": 2400,
+      "height": 1650,
+      "jpegBytes": 211705
+    },
+    {
+      "name": "05-power",
+      "title": "DAC反馈注入与电压设定",
+      "width": 2400,
+      "height": 1650,
+      "jpegBytes": 160867
+    },
+    {
+      "name": "06-host",
+      "title": "网页波形与操作",
+      "width": 2400,
+      "height": 1560,
+      "jpegBytes": 233611
+    },
+    {
+      "name": "07-parameters",
+      "title": "采样与供电关键参数",
+      "width": 2400,
+      "height": 1810,
+      "jpegBytes": 198471
+    }
+  ]
+}

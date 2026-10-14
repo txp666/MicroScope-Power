@@ -1,0 +1,123 @@
+{
+  "date": "2026-10-14",
+  "hardwareSource": "User-provided PADS and PNG exports dated 2026-10-13, schematic marked V1.0",
+  "photographs": [
+    "IMG_2404.HEIC",
+    "IMG_2405.HEIC",
+    "PixPin_2026-10-14_14-24-09.jpg"
+  ],
+  "productPhotoTreatment": "orientation, crop and compression only; physical device and display preserved",
+  "finalComposition": "exact SVG text and geometry, real photographs, sharp 0.35.5; no generated background in final images",
+  "imageGeneration": {
+    "purpose": "background visual exploration; unused in final assets",
+    "tool": "built-in ImageGen",
+    "prompt": "Clean dark engineering background only, no product, no text, quiet teal drafting grid and subtle circuit traces, landscape 23:16."
+  },
+  "files": [
+    {
+      "file": "media/01-cover.jpg",
+      "bytes": 311652,
+      "sha256": "d07d533614dca94dbfead5850d1e10ccf0717943899bf2a06d6b560591d74d1f"
+    },
+    {
+      "file": "media/01-cover.png",
+      "bytes": 2075289,
+      "sha256": "90427559d33044fc2eb9a1439e4c8a6dda21f9018f8b346516218b6f60a0e53c"
+    },
+    {
+      "file": "media/01-cover.svg",
+      "bytes": 508439,
+      "sha256": "3f8a94f96a090cee37232402b48503b204089e48503de366c8911841cdeae7a9"
+    },
+    {
+      "file": "media/02-hardware.jpg",
+      "bytes": 293481,
+      "sha256": "80576fde1fb8db86ae121c8671c7f1e05a8c4a640a1fe967e058ba3c3516e106"
+    },
+    {
+      "file": "media/02-hardware.png",
+      "bytes": 2186454,
+      "sha256": "19368d7955875b6f5c0555f437c20940aacedd6979cbe508e7dba3c24e84d1f0"
+    },
+    {
+      "file": "media/02-hardware.svg",
+      "bytes": 1045181,
+      "sha256": "2ea5f25ed8c70fa5c198d881bfff79e53a7c9228aa75d93796bfcd53752fc0e4"
+    },
+    {
+      "file": "media/03-system.jpg",
+      "bytes": 210806,
+      "sha256": "d451395a70fe91d6f4eeae90be62ec10a2a8e888f089c58558a58ce419c91c6e"
+    },
+    {
+      "file": "media/03-system.png",
+      "bytes": 220017,
+      "sha256": "a75f5d2bf0efd4bba9d40bf305f47b71c8e767af79c713240209d16ec6fd12fa"
+    },
+    {
+      "file": "media/03-system.svg",
+      "bytes": 9885,
+      "sha256": "97b723968d8b4a93589c934b3f849e0f6b694b13186788d085192b2d70be8b41"
+    },
+    {
+      "file": "media/04-current.jpg",
+      "bytes": 211705,
+      "sha256": "ae09618390406ac98241d3fcdcf11a3449b49499476d9c37065f18d6e26a6f32"
+    },
+    {
+      "file": "media/04-current.png",
+      "bytes": 221877,
+      "sha256": "0c35a97ed7e61997e6bd4badf8143b2357b9d3b74a67422bc518c13f3dc7754b"
+    },
+    {
+      "file": "media/04-current.svg",
+      "bytes": 10141,
+      "sha256": "a21edae0f68f19ad095d1e913cf60650f378b5777eb3c91f337202517e379876"
+    },
+    {
+      "file": "media/05-power.jpg",
+      "bytes": 160867,
+      "sha256": "06945ba6eb26b0a4db427b88af46e45044d8bc5e03e51258e0adf83d79dca373"
+    },
+    {
+      "file": "media/05-power.png",
+      "bytes": 163535,
+      "sha256": "bc1385792323d08af0ac20432e5a78cf26a645868a08610363fad47f287706f7"
+    },
+    {
+      "file": "media/05-power.svg",
+      "bytes": 6669,
+      "sha256": "45d6ffff934ee14b89fcc6eba4bf117b7ee174e245b379d6f792723efdbe2163"
+    },
+    {
+      "file": "media/06-host.jpg",
+      "bytes": 233611,
+      "sha256": "3d0ac66a60671f0a5eb536f8491fe8013c18153f7c92bbc0ff913d5d3f1e15da"
+    },
+    {
+      "file": "media/06-host.png",
+      "bytes": 730483,
+      "sha256": "d3f74baaf68d0267c9f8bcd9c55705803695f69ecbcbc3b03011869336851526"
+    },
+    {
+      "file": "media/06-host.svg",
+      "bytes": 321050,
+      "sha256": "b8f67e9365a602677c0e176fa11832a1e704f9e8daa5cb37a0aae6ab2679f575"
+    },
+    {
+      "file": "media/07-parameters.jpg",
+      "bytes": 198471,
+      "sha256": "d9d21e146ae6acbde46c66ed22a0a749a1362c66191889f66da66449775ef900"
+    },
+    {
+      "file": "media/07-parameters.png",
+      "bytes": 235822,
+      "sha256": "1e1a823fd35d582bef6fabb3308f1915a326c056c38696ed5adfd8268c168136"
+    },
+    {
+      "file": "media/07-parameters.svg",
+      "bytes": 7600,
+      "sha256": "ae203a3354c4888f4e267e57dc818020c10c84551ea9741f4fe4b30641f9637d"
+    }
+  ]
+}

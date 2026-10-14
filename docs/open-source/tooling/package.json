@@ -1,0 +1,7 @@
+{
+  "name": "microscope-open-source-media",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "node generate.mjs && node preview.mjs" },
+  "dependencies": { "sharp": "0.35.5", "marked": "17.0.5" }
+}
