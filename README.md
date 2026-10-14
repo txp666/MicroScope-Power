@@ -25,8 +25,6 @@
 
 ![ModuSignal WebUSB 电流波形、游标与低通滤波界面](images/webusb-waveform.jpg)
 
-开源图文、系统框图、电路讲解、器件清单和外壳模型见 [开源资料](docs/open-source/README.md)。
-
 ## 目录
 
 - `firmware/`: Pico SDK 固件工程。

@@ -1,6 +1,7 @@
 build/
 firmware/build/
 output/
+docs/open-source/
 .agents/
 .vscode/.cmake/
 *.elf
