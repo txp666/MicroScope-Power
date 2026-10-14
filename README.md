@@ -2,6 +2,8 @@
 
 基于 RP2040 的便携式可调电源与微电流波形分析仪固件。固件通过 ADS8866 读取 INA296A3 电流采样链路，通过 WebUSB 向 [ModuSignal 上位机](https://modusignal.cn/pages/devices/microscope-power/)上传数据。上位机源码、构建和测试统一在 [ModuSignal 仓库](https://github.com/txp666/modusignal)维护。
 
+[立创开源项目：MicroScope Power 便携式可调电源与微电流波形分析仪](https://oshwhub.com/txp666/project_iupheygc)，含硬件工程、外壳模型和项目介绍。
+
 ## 实物与上位机
 
 <table>
@@ -38,6 +40,7 @@
 
 - ADS8866 真实采样，支持 `10k / 20k / 50k / 100kSPS`。
 - WebUSB 二进制帧上传，每帧 256 个 16-bit 原始 code。
+- 采集中持续检测输出端电压，`GET_STATUS` 上传电压及设备时间戳；ModuSignal 自动计算功率与累计能量估算，支持统计 CSV 导出。
 - 网页端按采样电阻、零点和 INA 增益换算为电流。
 - 网页以 `μA` 显示电流、波形和统计。
 - 支持自动量程和手动量程：

@@ -93,7 +93,7 @@ typedef struct __attribute__((packed)) {
 OK
 ERR <code>
 OK BOOTSEL
-STATUS state=IDLE fw=0.1.0 srate=100000 source=ADC dropped=0 seq=0 zero=0 zero1=0 zero10=0 last=0 range=10 auto_range=1 sense1_mohm=1000 sense10_mohm=10000 vdac_mv=0
+STATUS state=IDLE fw=0.2.2 srate=100000 source=ADC dropped=0 seq=0 zero=0 zero1=0 zero10=0 last=0 range=10 auto_range=1 sense1_mohm=1000 sense10_mohm=10000 vdac_mv=0 adc_errors=0 timing_overruns=0 save_pending=0 save_error=0 vout_mv=3300 vout_t_us=123456 vout_age_us=0
 ```
 
 字段说明：
@@ -114,10 +114,15 @@ STATUS state=IDLE fw=0.1.0 srate=100000 source=ADC dropped=0 seq=0 zero=0 zero1=
 | `sense1_mohm` | 1Ω 量程采样电阻，单位 mΩ |
 | `sense10_mohm` | 10Ω 量程采样电阻，单位 mΩ |
 | `vdac_mv` | 当前 DAC 设定输出，单位 mV |
+| `vout_mv` | v0.2.2 起提供 ADC0 实测负载端 VOUT，单位 mV；100k/100k 分压、16 次平均，使用当前固件的名义参考换算，不是 DAC 设定值 |
+| `vout_t_us` | 该次电压平均读取完成时的设备 `time_us_32()`；与电流帧首时间戳使用同一时基，32-bit 回绕 |
+| `vout_age_us` | 生成状态时电压缓存的年龄，单位 µs，无符号时间差；不包含后续 USB 传输/排队延迟 |
 | `adc_errors` | 上电以来 SPI 读取/写入等待超时次数；超时不会再复制上次 ADC 值充当新样本 |
 | `timing_overruns` | 上电以来软件采样调度超限次数；非零时需检查目标板实际采样周期 |
 | `save_pending` | 参数等待空闲保存，`0` 或 `1` |
 | `save_error` | 最近一次参数保存及回读验证是否失败，`0` 或 `1` |
+
+电压在 core 0 主循环中每 100 ms 更新，采集运行时也更新；`GET_STATUS` 会立即重新读取电压，避免启动动画或上次读数造成陈旧状态。电流 ADC 保持 core 1 原采集路径，530 字节帧体不变。电压是独立、较低带宽的平均测量，不是每个电流样本同时采到的电压，功率/能量计算需说明电压更新及时间轴估算条件。旧固件没有这三个字段，上位机不能把 `vdac_mv` 当成实测 VOUT，应使用明确标注的手工电压估算或等待新版遥测。
 
 ## 电流换算
 

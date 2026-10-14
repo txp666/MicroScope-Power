@@ -3,6 +3,7 @@
 #define GPIO_FUNC_SPI 1
 #define GPIO_FUNC_PWM 4
 #define GPIO_OUT 1
+#define GPIO_IN 0
 #define GPIO_OVERRIDE_NORMAL 0
 #define GPIO_OVERRIDE_LOW 2
 void gpio_set_function(unsigned pin, unsigned function);
@@ -11,3 +12,5 @@ void gpio_disable_pulls(unsigned pin);
 void gpio_init(unsigned pin);
 void gpio_set_dir(unsigned pin, bool out);
 void gpio_put(unsigned pin, bool value);
+void gpio_pull_up(unsigned pin);
+bool gpio_get(unsigned pin);

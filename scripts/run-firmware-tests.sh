@@ -17,7 +17,15 @@ cc_bin=${CC:-cc}
 "$cc_bin" -std=c11 -Wall -Wextra -Werror \
   -I"$repo_dir/tests/firmware/stubs" -I"$repo_dir/firmware/src" \
   "$repo_dir/tests/firmware/test_buzzer.c" -o "$build_dir/test_buzzer"
+"$cc_bin" -std=c11 -Wall -Wextra -Werror \
+  -I"$repo_dir/tests/firmware/stubs" -I"$repo_dir/firmware/src" \
+  "$repo_dir/tests/firmware/test_voltage_telemetry.c" -o "$build_dir/test_voltage_telemetry"
+"$cc_bin" -std=c11 -Wall -Wextra -Werror \
+  -I"$repo_dir/tests/firmware/stubs" -I"$repo_dir/firmware/src" \
+  "$repo_dir/tests/firmware/test_adc_voltage.c" -o "$build_dir/test_adc_voltage"
 "$build_dir/test_sampler"
 "$build_dir/test_ads8866"
 "$build_dir/test_app_settings"
 "$build_dir/test_buzzer"
+"$build_dir/test_voltage_telemetry"
+"$build_dir/test_adc_voltage"

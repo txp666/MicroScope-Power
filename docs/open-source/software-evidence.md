@@ -80,7 +80,7 @@
 
 当前固件通过 [power_output.c](../../firmware/src/power_output.c) 在 I2C `0x48..0x4B` 寻找 DAC60501，将设定毫伏换成 12-bit DAC 数据、左对齐写入寄存器。DAC 设定范围为 `0..2500 mV`。GP0 控制 LDO EN，GP1 读取 PG；DAC 改变硬件 LDO 调节网络的设定，最终输出电压与 DAC 电压的对应关系由硬件反馈/注入网络决定。
 
-**固件没有 PI/PID 电压闭环。** [local_ui.c](../../firmware/src/local_ui.c) 517–520 行将旋钮增量直接加到 DAC 设定；[adc_voltage.c](../../firmware/src/adc_voltage.c) 读取 GP26 上的 100 kΩ / 100 kΩ 分压，经平均和本地 IIR 后仅用于 OLED 显示，没有“目标输出电压减实际电压”到 DAC 的反馈运算。LDO 自身的模拟稳压环路与 MCU PID 是两件事。
+**固件没有 PI/PID 电压闭环。** [local_ui.c](../../firmware/src/local_ui.c) 将旋钮增量直接加到 DAC 设定；[adc_voltage.c](../../firmware/src/adc_voltage.c) 读取 GP26 上的 100 kΩ / 100 kΩ 分压，用于 OLED 电压显示。v0.2.2 起，主循环也在采集中更新实测电压，`GET_STATUS` 返回 `vout_mv`、读取完成时间 `vout_t_us` 与缓存年龄 `vout_age_us`。这些读回没有参与“目标输出电压减实际电压”到 DAC 的反馈运算。LDO 自身的模拟稳压环路与 MCU PID 是两件事。
 
 `0.01 / 0.1 / 1 V` 是当前 DAC 设定步进，不能据此宣称输出端具有相同步进、1 mV 精度或恒流功能。输出电压范围、负载能力、压差、纹波、温升和动态响应需硬件资料与实测支持。当前 WebUSB 命令没有输出电压设定接口，网页不实现远程电压 PID 控制。运行采集时 `main.c` 暂停 `local_ui_update`，因此应先调压再采集，或停止采集后调节。
 

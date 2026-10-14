@@ -23,6 +23,7 @@
 #endif
 
 #define BOOTSEL_ENCODER_HOLD_MS 1000u
+#define OUTPUT_VOLTAGE_REFRESH_US 100000u
 
 typedef enum {
     APP_BOOT = 0,
@@ -35,6 +36,25 @@ typedef enum {
 static app_state_t g_state = APP_BOOT;
 static bool g_settings_save_pending = false;
 static bool g_settings_save_failed = false;
+static bool g_output_voltage_valid = false;
+static uint32_t g_output_voltage_mv = 0;
+static uint32_t g_output_voltage_t_us = 0;
+
+static void refresh_output_voltage(bool force) {
+    const uint32_t now_us = time_us_32();
+    if (!force && g_output_voltage_valid &&
+        (uint32_t)(now_us - g_output_voltage_t_us) < OUTPUT_VOLTAGE_REFRESH_US) {
+        return;
+    }
+
+    // ADC0 and the OLED's voltage reader run sequentially on core 0. This
+    // independent ADC does not use the ADS8866 SPI or change core 1 sampling.
+    g_output_voltage_mv = adc_voltage_read_input_mv(NULL, NULL);
+    // Timestamp the completion of the 16-conversion average, not a fictitious
+    // voltage sample synchronous with every current sample.
+    g_output_voltage_t_us = time_us_32();
+    g_output_voltage_valid = true;
+}
 
 static bool encoder_key_held_at_boot(void) {
     gpio_init(ENCODER_PIN_KEY);
@@ -153,9 +173,12 @@ static void request_settings_save(void) {
 }
 
 static void send_status(void) {
+    // Refresh on demand, including immediately after the startup animation.
+    refresh_output_voltage(true);
+    const uint32_t voltage_age_us = (uint32_t)(time_us_32() - g_output_voltage_t_us);
     char line[512];
     snprintf(line, sizeof(line),
-             "STATUS state=%s fw=%s srate=%lu source=ADC dropped=%lu seq=%u zero=%u zero1=%u zero10=%u last=%u range=%u auto_range=%u sense1_mohm=%lu sense10_mohm=%lu vdac_mv=%u adc_errors=%lu timing_overruns=%lu save_pending=%u save_error=%u\n",
+             "STATUS state=%s fw=%s srate=%lu source=ADC dropped=%lu seq=%u zero=%u zero1=%u zero10=%u last=%u range=%u auto_range=%u sense1_mohm=%lu sense10_mohm=%lu vdac_mv=%u adc_errors=%lu timing_overruns=%lu save_pending=%u save_error=%u vout_mv=%lu vout_t_us=%lu vout_age_us=%lu\n",
              app_state_name(g_state),
              PICO_POWER_SCOPE_VERSION,
              (unsigned long)sampler_get_rate(),
@@ -173,7 +196,10 @@ static void send_status(void) {
              (unsigned long)ads8866_get_read_errors(),
              (unsigned long)sampler_get_timing_overruns(),
              g_settings_save_pending ? 1u : 0u,
-             g_settings_save_failed ? 1u : 0u);
+             g_settings_save_failed ? 1u : 0u,
+             (unsigned long)g_output_voltage_mv,
+             (unsigned long)g_output_voltage_t_us,
+             (unsigned long)voltage_age_us);
     usb_webusb_send_text(line);
 }
 
@@ -354,6 +380,7 @@ int main(void) {
     sampler_init();
     load_saved_settings();
     local_ui_init();
+    refresh_output_voltage(true);
 
     g_state = APP_USB_WAIT;
 
@@ -371,6 +398,7 @@ int main(void) {
 
         service_commands();
         service_wave_tx();
+        refresh_output_voltage(false);
         if (!sampler_is_running()) {
             local_ui_update(to_ms_since_boot(get_absolute_time()));
             if (local_ui_take_output_save_request()) {
