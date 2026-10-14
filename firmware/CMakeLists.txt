@@ -42,6 +42,7 @@ target_compile_options(pico_power_scope PRIVATE
 target_compile_definitions(pico_power_scope PRIVATE
     PICO_STDIO_USB_CONNECTION_WITHOUT_DTR=1
     PICO_STDIO_USB_STDOUT_TIMEOUT_US=10000
+    PICO_STDIO_USB_ENABLE_IRQ_BACKGROUND_TASK=0
     PICO_POWER_SCOPE_VERSION="${APP_VERSION}"
 )
 

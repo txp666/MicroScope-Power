@@ -16,6 +16,8 @@
 #define USB_BCD 0x0210u
 
 #define USB_CMD_QUEUE_DEPTH 8u
+#define USB_TEXT_QUEUE_DEPTH 8u
+#define USB_TEXT_MAX_LEN 512u
 
 static volatile bool g_mounted = false;
 static volatile bool g_webusb_connected = false;
@@ -26,6 +28,56 @@ static uint8_t g_cmd_read = 0;
 static uint8_t g_cmd_count = 0;
 static char g_line_buf[PROTOCOL_CMD_MAX_LEN];
 static uint8_t g_line_len = 0;
+static bool g_line_overflow = false;
+
+typedef struct {
+    char bytes[USB_TEXT_MAX_LEN];
+    uint16_t length;
+    uint16_t sent;
+} text_response_t;
+
+static text_response_t g_text_queue[USB_TEXT_QUEUE_DEPTH];
+static uint8_t g_text_write = 0;
+static uint8_t g_text_read = 0;
+static uint8_t g_text_count = 0;
+static wave_frame_t g_partial_frame;
+static uint16_t g_frame_sent = 0;
+static bool g_frame_pending = false;
+
+static void reset_session_buffers(void) {
+    g_cmd_write = g_cmd_read = g_cmd_count = 0;
+    g_line_len = 0;
+    g_line_overflow = false;
+    g_text_write = g_text_read = g_text_count = 0;
+    g_frame_sent = 0;
+    g_frame_pending = false;
+    tud_vendor_read_flush();
+    // TinyUSB bundled with Pico SDK has no public TX-clear API. The WebUSB
+    // client resets the USB device before opening a new command session; that
+    // bus reset also clears any old TinyUSB FIFO/endpoint bytes.
+}
+
+static void drain_tx(void) {
+    if (!usb_webusb_connected()) return;
+
+    // Finish a short frame write before inserting any text into the byte stream.
+    if (g_frame_pending) {
+        const uint8_t *bytes = (const uint8_t *)&g_partial_frame;
+        g_frame_sent += tud_vendor_write(bytes + g_frame_sent, sizeof(g_partial_frame) - g_frame_sent);
+        tud_vendor_write_flush();
+        if (g_frame_sent < sizeof(g_partial_frame)) return;
+        g_frame_pending = false;
+    }
+
+    while (g_text_count) {
+        text_response_t *response = &g_text_queue[g_text_read];
+        response->sent += tud_vendor_write(response->bytes + response->sent, response->length - response->sent);
+        tud_vendor_write_flush();
+        if (response->sent < response->length) return;
+        g_text_read = (uint8_t)((g_text_read + 1u) % USB_TEXT_QUEUE_DEPTH);
+        g_text_count--;
+    }
+}
 
 static tusb_desc_device_t const desc_device = {
     .bLength = sizeof(tusb_desc_device_t),
@@ -119,7 +171,7 @@ static uint8_t const desc_ms_os_20[] = {
 
 TU_VERIFY_STATIC(sizeof(desc_ms_os_20) == MS_OS_20_DESC_LEN, "Incorrect MS OS 2.0 descriptor size");
 
-#define LANDING_URL "localhost"
+#define LANDING_URL "modusignal.cn/pages/devices/microscope-power/"
 static tusb_desc_webusb_url_t const desc_url = {
     .bLength = 3 + sizeof(LANDING_URL) - 1,
     .bDescriptorType = 3,
@@ -188,10 +240,8 @@ static void cmd_queue_push(const char *line, uint8_t len) {
         return;
     }
 
-    if (g_cmd_count >= USB_CMD_QUEUE_DEPTH) {
-        g_cmd_read = (uint8_t)((g_cmd_read + 1u) % USB_CMD_QUEUE_DEPTH);
-        g_cmd_count--;
-    }
+    // RX draining stops at a full queue, leaving unread bytes in TinyUSB's FIFO.
+    if (g_cmd_count >= USB_CMD_QUEUE_DEPTH) return;
 
     if (len >= PROTOCOL_CMD_MAX_LEN) {
         len = PROTOCOL_CMD_MAX_LEN - 1u;
@@ -209,15 +259,28 @@ static void process_rx_byte(uint8_t ch) {
     }
 
     if (ch == '\n') {
-        cmd_queue_push(g_line_buf, g_line_len);
+        // Reject the entire overlong command instead of executing its suffix.
+        if (g_line_overflow) cmd_queue_push("?", 1);
+        else cmd_queue_push(g_line_buf, g_line_len);
         g_line_len = 0;
+        g_line_overflow = false;
         return;
     }
 
+    if (g_line_overflow) return;
     if (g_line_len < (PROTOCOL_CMD_MAX_LEN - 1u)) {
         g_line_buf[g_line_len++] = (char)ch;
     } else {
-        g_line_len = 0;
+        g_line_overflow = true;
+    }
+}
+
+static void drain_rx(void) {
+    if (!usb_webusb_connected()) return;
+    while (g_cmd_count < USB_CMD_QUEUE_DEPTH && tud_vendor_available()) {
+        uint8_t byte;
+        if (tud_vendor_read(&byte, 1) != 1) break;
+        process_rx_byte(byte);
     }
 }
 
@@ -229,6 +292,8 @@ void usb_webusb_init(void) {
 
 void usb_webusb_task(void) {
     tud_task();
+    drain_tx();
+    drain_rx();
 }
 
 bool usb_webusb_connected(void) {
@@ -240,7 +305,8 @@ bool usb_cdc_connected(void) {
 }
 
 bool usb_webusb_read_command(char *out, uint32_t out_size) {
-    if (g_cmd_count == 0 || out_size == 0) {
+    // Each command produces one response. Reserve room before executing it.
+    if (!usb_webusb_connected() || g_cmd_count == 0 || out_size == 0 || g_text_count >= USB_TEXT_QUEUE_DEPTH) {
         return false;
     }
 
@@ -252,7 +318,9 @@ bool usb_webusb_read_command(char *out, uint32_t out_size) {
 }
 
 bool usb_webusb_can_send_frame(void) {
-    return usb_webusb_connected() && tud_vendor_write_available() >= sizeof(wave_frame_t);
+    drain_tx();
+    return usb_webusb_connected() && !g_frame_pending && g_text_count == 0 &&
+           tud_vendor_write_available() >= sizeof(wave_frame_t);
 }
 
 bool usb_webusb_send_frame(const wave_frame_t *frame) {
@@ -261,32 +329,59 @@ bool usb_webusb_send_frame(const wave_frame_t *frame) {
     }
 
     uint32_t written = tud_vendor_write(frame, sizeof(*frame));
+    if (written < sizeof(*frame)) {
+        g_partial_frame = *frame;
+        g_frame_sent = (uint16_t)written;
+        g_frame_pending = true;
+    }
     tud_vendor_write_flush();
-    return written == sizeof(*frame);
+    return true;
 }
 
-void usb_webusb_send_text(const char *text) {
+bool usb_webusb_send_text(const char *text) {
     if (!usb_webusb_connected()) {
-        return;
+        return false;
     }
 
+    drain_tx();
     uint32_t len = (uint32_t)strlen(text);
-    if (tud_vendor_write_available() < len) {
-        return;
+    if (len >= USB_TEXT_MAX_LEN || g_text_count >= USB_TEXT_QUEUE_DEPTH) {
+        // Never silently lose an ACK and then accept another command in its
+        // place. An impossible/unsolicited overflow requires a fresh session.
+        g_webusb_connected = false;
+        reset_session_buffers();
+        app_board_set_led(false);
+        return false;
     }
 
-    tud_vendor_write(text, len);
-    tud_vendor_write_flush();
+    text_response_t *response = &g_text_queue[g_text_write];
+    memcpy(response->bytes, text, len);
+    response->length = (uint16_t)len;
+    response->sent = 0;
+    g_text_write = (uint8_t)((g_text_write + 1u) % USB_TEXT_QUEUE_DEPTH);
+    g_text_count++;
+    drain_tx();
+    return true;
+}
+
+bool usb_webusb_tx_pending(void) {
+    return usb_webusb_connected() && (g_frame_pending || g_text_count != 0 ||
+                                     tud_vendor_write_available() < CFG_TUD_VENDOR_TX_BUFSIZE);
 }
 
 void tud_mount_cb(void) {
+    // TinyUSB does not invoke tud_umount_cb for a USB bus reset. A fresh
+    // configuration must therefore clear old commands and wait for 0x22 too.
+    g_webusb_connected = false;
+    reset_session_buffers();
+    app_board_set_led(false);
     g_mounted = true;
 }
 
 void tud_umount_cb(void) {
     g_mounted = false;
     g_webusb_connected = false;
-    g_line_len = 0;
+    reset_session_buffers();
 }
 
 void tud_suspend_cb(bool remote_wakeup_en) {
@@ -316,6 +411,7 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
 
     case TUSB_REQ_TYPE_CLASS:
         if (request->bRequest == 0x22) {
+            reset_session_buffers();
             g_webusb_connected = request->wValue != 0;
             app_board_set_led(g_webusb_connected);
 
@@ -335,12 +431,5 @@ void tud_vendor_rx_cb(uint8_t idx, const uint8_t *buffer, uint16_t bufsize) {
     (void)buffer;
     (void)bufsize;
 
-    while (tud_vendor_available()) {
-        uint8_t rx[64];
-        uint32_t count = tud_vendor_read(rx, sizeof(rx));
-
-        for (uint32_t i = 0; i < count; ++i) {
-            process_rx_byte(rx[i]);
-        }
-    }
+    drain_rx();
 }

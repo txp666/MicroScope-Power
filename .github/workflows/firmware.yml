@@ -30,6 +30,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build gcc-arm-none-eabi libnewlib-arm-none-eabi
 
+      - name: Run firmware regression tests
+        run: |
+          sh scripts/run-firmware-tests.sh
+          bash scripts/run-usb-tests.sh
+
       - name: Resolve version
         id: version
         shell: bash
@@ -52,9 +57,6 @@ jobs:
       - name: Build
         run: cmake --build build/firmware-ninja --parallel
 
-      - name: Check web JavaScript
-        run: node --check web/app.js
-
       - name: Package firmware
         shell: bash
         run: |
@@ -71,6 +73,8 @@ jobs:
             echo "ref=${GITHUB_REF_NAME}"
             echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } > "dist/${base}.txt"
+          cp LICENSE dist/LICENSE
+          cp THIRD-PARTY-NOTICES.txt dist/THIRD-PARTY-NOTICES.txt
           (cd dist && sha256sum * > SHA256SUMS.txt)
 
       - name: Upload build artifact

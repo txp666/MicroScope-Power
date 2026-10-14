@@ -11,7 +11,7 @@
 #define ADS8866_SPI_READ_TIMEOUT_US 1000u
 
 static ads8866_range_t g_range = ADS8866_RANGE_10_OHM;
-static uint16_t g_last_sample = 0u;
+static volatile uint32_t g_read_errors = 0u;
 
 static void drain_spi_rx(void) {
     while (spi_is_readable(ADS8866_SPI_PORT)) {
@@ -72,21 +72,28 @@ void ads8866_start_conversion(void) {
     gpio_put(ADS8866_PIN_CS, 1);
 }
 
-uint16_t ads8866_finish_conversion(void) {
+bool ads8866_try_finish_conversion(uint16_t *sample_out) {
     gpio_put(ADS8866_PIN_CS, 0);
     busy_wait_at_least_cycles(ADS8866_CS_TO_MSB_WAIT_CYCLES);
-    uint16_t value = g_last_sample;
-    if (read_spi16(&value)) {
-        g_last_sample = value;
+    uint16_t value;
+    bool ok = read_spi16(&value);
+    if (ok) {
+        *sample_out = value;
+    } else {
+        g_read_errors++;
     }
     gpio_put(ADS8866_PIN_MOSI, 1);
-    return value;
+    return ok;
 }
 
-uint16_t ads8866_read_sample(void) {
+bool ads8866_try_read_sample(uint16_t *sample_out) {
     ads8866_start_conversion();
     busy_wait_us_32(9);
-    return ads8866_finish_conversion();
+    return ads8866_try_finish_conversion(sample_out);
+}
+
+uint32_t ads8866_get_read_errors(void) {
+    return g_read_errors;
 }
 
 void ads8866_set_range(ads8866_range_t range) {

@@ -1,25 +1,15 @@
 # 排障说明
 
-## Web 页面 404
+## 上位机页面打不开
 
-确认 HTTP 服务根目录是 `web`：
-
-```powershell
-python -m http.server 8000 --bind 127.0.0.1 --directory web
-```
-
-浏览器打开：
-
-```text
-http://127.0.0.1:8000/
-```
+使用 Chrome 或 Edge 打开 [modusignal 上位机](https://modusignal.cn/pages/devices/microscope-power/)。本仓库不再提供本地网页副本；如遇页面加载异常，请检查网络并强制刷新浏览器缓存。
 
 ## 浏览器无法连接设备
 
 检查：
 
 - 使用 Chrome 或 Edge。
-- 页面地址是 `http://127.0.0.1:8000/`。
+- 页面地址是 [modusignal 上位机](https://modusignal.cn/pages/devices/microscope-power/)。
 - Pico 已烧录当前 UF2。
 - Windows 设备管理器中能看到 USB 设备。
 - 重新拔插 Pico 后刷新网页。
@@ -32,7 +22,7 @@ http://127.0.0.1:8000/
 - 点击前先停止采集，或直接让按钮流程自动停止采集。
 - 等待 Windows 重新枚举 USB 设备。
 - 如果没有盘符，手动按住 Pico `BOOTSEL` 重新插入 USB。
-- 如果页面还是旧按钮状态，刷新 `http://127.0.0.1:8000/`，必要时强制刷新浏览器缓存。
+- 如果页面还是旧按钮状态，刷新 [modusignal 上位机](https://modusignal.cn/pages/devices/microscope-power/)，必要时强制刷新浏览器缓存。
 
 ## 上位机一直收到 0
 

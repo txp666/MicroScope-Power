@@ -25,4 +25,8 @@ bool usb_cdc_connected(void);
 bool usb_webusb_read_command(char *out, uint32_t out_size);
 bool usb_webusb_can_send_frame(void);
 bool usb_webusb_send_frame(const wave_frame_t *frame);
-void usb_webusb_send_text(const char *text);
+// Commands are backpressured until a response slot is available. A false
+// return means the session has ended and the host must reconnect.
+bool usb_webusb_send_text(const char *text);
+// Includes queued bytes/FIFO, but not an already submitted endpoint packet.
+bool usb_webusb_tx_pending(void);

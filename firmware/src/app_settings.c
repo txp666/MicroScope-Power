@@ -2,6 +2,7 @@
 
 #include "hardware/flash.h"
 #include "hardware/regs/addressmap.h"
+#include "hardware/sync.h"
 #include "pico/multicore.h"
 
 #include <string.h>
@@ -77,9 +78,14 @@ bool app_settings_save(const app_settings_t *settings) {
     memcpy(page, &record, sizeof(record));
 
     multicore_lockout_start_blocking();
+    // Core 1 is parked, but USB/timer IRQs on this core may still execute XIP
+    // code. Keep both cores away from flash until XIP has been restored.
+    uint32_t interrupts = save_and_disable_interrupts();
     flash_range_erase(APP_SETTINGS_FLASH_OFFSET, FLASH_SECTOR_SIZE);
     flash_range_program(APP_SETTINGS_FLASH_OFFSET, page, FLASH_PAGE_SIZE);
+    restore_interrupts(interrupts);
     multicore_lockout_end_blocking();
 
-    return record_valid(stored_record());
+    const app_settings_record_t *saved = stored_record();
+    return record_valid(saved) && memcmp(&saved->settings, settings, sizeof(*settings)) == 0;
 }

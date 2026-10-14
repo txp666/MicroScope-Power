@@ -24,8 +24,6 @@
 #define OLED_CURRENT_FILTER_SHIFT 2u
 #define FRONTEND_GAIN 50u
 #define LOCAL_CURRENT_AVG_SAMPLES 8u
-#define LOCAL_RANGE_RAIL_LOW_CODE 512u
-#define LOCAL_RANGE_RAIL_HIGH_CODE 60000u
 #define LOCAL_RANGE_10_TO_1_DELTA_CODE 30000u
 #define LOCAL_RANGE_1_TO_10_DELTA_CODE 1800u
 #define LOCAL_RANGE_SETTLE_READS 4u
@@ -351,43 +349,54 @@ uint32_t local_ui_get_sense_milliohm(ads8866_range_t range) {
     return sense_milliohm_for_range(range);
 }
 
-static uint16_t read_ads_average(void) {
+static bool read_ads_average(uint16_t *code_out) {
     uint32_t sum = 0;
     for (uint32_t i = 0; i < LOCAL_CURRENT_AVG_SAMPLES; ++i) {
-        sum += ads8866_read_sample();
+        uint16_t sample;
+        if (!ads8866_try_read_sample(&sample)) {
+            return false;
+        }
+        sum += sample;
     }
-    return (uint16_t)((sum + (LOCAL_CURRENT_AVG_SAMPLES / 2u)) / LOCAL_CURRENT_AVG_SAMPLES);
+    *code_out = (uint16_t)((sum + (LOCAL_CURRENT_AVG_SAMPLES / 2u)) / LOCAL_CURRENT_AVG_SAMPLES);
+    return true;
 }
 
 static void settle_ads_reads(void) {
     for (uint32_t i = 0; i < LOCAL_RANGE_SETTLE_READS; ++i) {
-        (void)ads8866_read_sample();
+        uint16_t ignored;
+        (void)ads8866_try_read_sample(&ignored);
     }
 }
 
-static uint16_t read_current_code(ads8866_range_t *range_out) {
+static bool read_current_code(ads8866_range_t *range_out, uint16_t *code_out) {
     ads8866_range_t range = ads8866_get_range();
-    uint16_t code = read_ads_average();
+    uint16_t code;
+    if (!read_ads_average(&code)) {
+        return false;
+    }
 
     if (sampler_get_auto_range()) {
         uint16_t zero = sampler_get_zero_code_for_range(range);
         uint16_t delta = code_distance(code, zero);
         if (range == ADS8866_RANGE_10_OHM) {
-            if (code >= LOCAL_RANGE_RAIL_HIGH_CODE ||
-                code <= LOCAL_RANGE_RAIL_LOW_CODE ||
+            if (ads8866_codes_at_rail(code, code, zero) ||
                 delta >= LOCAL_RANGE_10_TO_1_DELTA_CODE) {
                 ads8866_set_range(ADS8866_RANGE_1_OHM);
                 settle_ads_reads();
                 range = ADS8866_RANGE_1_OHM;
-                code = read_ads_average();
+                if (!read_ads_average(&code)) {
+                    return false;
+                }
             }
         } else if (delta <= LOCAL_RANGE_1_TO_10_DELTA_CODE &&
-                   code < LOCAL_RANGE_RAIL_HIGH_CODE &&
-                   code > LOCAL_RANGE_RAIL_LOW_CODE) {
+                   !ads8866_codes_at_rail(code, code, zero)) {
             ads8866_set_range(ADS8866_RANGE_10_OHM);
             settle_ads_reads();
             range = ADS8866_RANGE_10_OHM;
-            code = read_ads_average();
+            if (!read_ads_average(&code)) {
+                return false;
+            }
         }
     } else {
         range = sampler_get_range();
@@ -395,13 +404,16 @@ static uint16_t read_current_code(ads8866_range_t *range_out) {
             ads8866_set_range(range);
             settle_ads_reads();
         }
-        code = read_ads_average();
+        if (!read_ads_average(&code)) {
+            return false;
+        }
     }
 
     if (range_out) {
         *range_out = range;
     }
-    return code;
+    *code_out = code;
+    return true;
 }
 
 static int32_t code_to_microamps(uint16_t code, ads8866_range_t range) {
@@ -432,7 +444,10 @@ static int32_t filter_signed_iir(int32_t previous, int32_t measured, uint8_t shi
 
 static int32_t filtered_current_ua(void) {
     ads8866_range_t range = ADS8866_RANGE_10_OHM;
-    uint16_t code = read_current_code(&range);
+    uint16_t code;
+    if (!read_current_code(&range, &code)) {
+        return g_display_current_ua;
+    }
     uint16_t zero = sampler_get_zero_code_for_range(range);
     int32_t measured_ua = code_to_microamps(code, range);
 

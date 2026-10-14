@@ -28,6 +28,8 @@ bool sampler_pop_frame(wave_frame_t *out);
 uint32_t sampler_get_dropped(void);
 uint16_t sampler_get_next_seq(void);
 uint16_t sampler_get_last_sample(void);
+/* Cumulative missed scheduling deadlines; not a count of discarded frames. */
+uint32_t sampler_get_timing_overruns(void);
 
 void sampler_set_zero_code(uint16_t zero_code);
 uint16_t sampler_get_zero_code(void);

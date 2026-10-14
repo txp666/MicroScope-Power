@@ -34,6 +34,7 @@ typedef enum {
 
 static app_state_t g_state = APP_BOOT;
 static bool g_settings_save_pending = false;
+static bool g_settings_save_failed = false;
 
 static bool encoder_key_held_at_boot(void) {
     gpio_init(ENCODER_PIN_KEY);
@@ -152,9 +153,9 @@ static void request_settings_save(void) {
 }
 
 static void send_status(void) {
-    char line[384];
+    char line[512];
     snprintf(line, sizeof(line),
-             "STATUS state=%s fw=%s srate=%lu source=ADC dropped=%lu seq=%u zero=%u zero1=%u zero10=%u last=%u range=%u auto_range=%u sense1_mohm=%lu sense10_mohm=%lu vdac_mv=%u\n",
+             "STATUS state=%s fw=%s srate=%lu source=ADC dropped=%lu seq=%u zero=%u zero1=%u zero10=%u last=%u range=%u auto_range=%u sense1_mohm=%lu sense10_mohm=%lu vdac_mv=%u adc_errors=%lu timing_overruns=%lu save_pending=%u save_error=%u\n",
              app_state_name(g_state),
              PICO_POWER_SCOPE_VERSION,
              (unsigned long)sampler_get_rate(),
@@ -168,7 +169,11 @@ static void send_status(void) {
              sampler_get_auto_range() ? 1u : 0u,
              (unsigned long)local_ui_get_sense_milliohm(ADS8866_RANGE_1_OHM),
              (unsigned long)local_ui_get_sense_milliohm(ADS8866_RANGE_10_OHM),
-             power_output_vdac_mv());
+             power_output_vdac_mv(),
+             (unsigned long)ads8866_get_read_errors(),
+             (unsigned long)sampler_get_timing_overruns(),
+             g_settings_save_pending ? 1u : 0u,
+             g_settings_save_failed ? 1u : 0u);
     usb_webusb_send_text(line);
 }
 
@@ -207,7 +212,11 @@ static void handle_command(char *cmd) {
         sampler_stop();
         g_state = APP_IDLE;
         usb_webusb_send_text("OK BOOTSEL\n");
-        sleep_ms(100);
+        absolute_time_t deadline = make_timeout_time_ms(100);
+        while (!time_reached(deadline)) {
+            usb_webusb_task();
+            sleep_ms(1);
+        }
         reset_usb_boot(0, 0);
         return;
     }
@@ -342,8 +351,8 @@ int main(void) {
     power_output_init();
     adc_voltage_init();
     ads8866_init();
-    load_saved_settings();
     sampler_init();
+    load_saved_settings();
     local_ui_init();
 
     g_state = APP_USB_WAIT;
@@ -369,7 +378,10 @@ int main(void) {
             }
             if (g_settings_save_pending) {
                 g_settings_save_pending = false;
-                (void)save_current_settings();
+                g_settings_save_failed = !save_current_settings();
+                if (g_settings_save_failed) {
+                    usb_webusb_send_text("WARN SETTINGS_SAVE_FAILED\n");
+                }
             }
         }
         tight_loop_contents();

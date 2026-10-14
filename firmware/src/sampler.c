@@ -10,8 +10,6 @@
 
 #define ADS8866_CONVERSION_WAIT_US 9u
 #define SAMPLE_PERIOD_Q_SHIFT 16u
-#define AUTO_RANGE_RAIL_LOW_CODE 512u
-#define AUTO_RANGE_RAIL_HIGH_CODE 60000u
 #define AUTO_RANGE_10_TO_1_DELTA_CODE 30000u
 #define AUTO_RANGE_1_TO_10_DELTA_CODE 1800u
 #define AUTO_RANGE_10_TO_1_CONFIRM_FRAMES 1u
@@ -39,6 +37,9 @@ static volatile uint16_t g_next_seq = 0;
 static uint8_t g_range_up_count = 0;
 static uint8_t g_range_down_count = 0;
 static uint8_t g_range_settle_frames = 0;
+static uint16_t g_pending_flags = 0;
+static bool g_timing_overrun_pending = false;
+static volatile uint32_t g_timing_overruns = 0;
 
 static uint16_t code_distance(uint16_t a, uint16_t b) {
     return a > b ? (uint16_t)(a - b) : (uint16_t)(b - a);
@@ -89,8 +90,7 @@ static void update_auto_range(uint16_t min_code, uint16_t max_code) {
                                    : code_distance(min_code, zero);
 
     if (range == ADS8866_RANGE_10_OHM) {
-        if (max_code >= AUTO_RANGE_RAIL_HIGH_CODE ||
-            min_code <= AUTO_RANGE_RAIL_LOW_CODE ||
+        if (ads8866_codes_at_rail(min_code, max_code, zero) ||
             max_delta >= AUTO_RANGE_10_TO_1_DELTA_CODE) {
             if (g_range_down_count < AUTO_RANGE_10_TO_1_CONFIRM_FRAMES) {
                 g_range_down_count++;
@@ -105,8 +105,7 @@ static void update_auto_range(uint16_t min_code, uint16_t max_code) {
     }
 
     if (max_delta <= AUTO_RANGE_1_TO_10_DELTA_CODE &&
-        max_code < AUTO_RANGE_RAIL_HIGH_CODE &&
-        min_code > AUTO_RANGE_RAIL_LOW_CODE) {
+        !ads8866_codes_at_rail(min_code, max_code, zero)) {
         if (g_range_up_count < AUTO_RANGE_1_TO_10_CONFIRM_FRAMES) {
             g_range_up_count++;
         }
@@ -126,9 +125,13 @@ static wave_frame_t *queue_reserve_frame(uint16_t *flags) {
     critical_section_enter_blocking(&g_queue_lock);
 
     if (g_queue.count >= FRAME_QUEUE_DEPTH) {
+        const uint16_t carried_flags = g_queue.frames[g_queue.read_index].flags &
+                                      (PROTOCOL_FLAG_STREAM_START | PROTOCOL_FLAG_GAP_BEFORE);
         g_queue.read_index = (uint8_t)((g_queue.read_index + 1u) % FRAME_QUEUE_DEPTH);
         g_queue.count--;
         g_queue.dropped++;
+        /* Preserve a session boundary even if its first frame is evicted. */
+        g_queue.frames[g_queue.read_index].flags |= carried_flags;
         *flags |= PROTOCOL_FLAG_OVERFLOW;
     }
 
@@ -145,14 +148,31 @@ static void queue_publish_reserved_frame(void) {
     critical_section_exit(&g_queue_lock);
 }
 
+static void reset_current_frame(void) {
+    g_current_frame = NULL;
+    g_current_count = 0;
+    g_current_min = UINT16_MAX;
+    g_current_max = 0;
+    g_current_discard = false;
+}
+
+static void discard_current_frame(void) {
+    reset_current_frame();
+    g_pending_flags |= PROTOCOL_FLAG_GAP_BEFORE;
+}
+
 static void append_sample(uint16_t sample, uint32_t t0_us, uint32_t sample_rate) {
     if (g_current_count == 0) {
+        if (g_timing_overrun_pending) {
+            g_pending_flags |= PROTOCOL_FLAG_TIMING_OVERRUN;
+            g_timing_overrun_pending = false;
+        }
         g_current_discard = g_range_settle_frames > 0u;
         if (!g_current_discard) {
-            uint16_t flags = frame_flags();
+            uint16_t flags = frame_flags() | g_pending_flags;
             g_current_frame = queue_reserve_frame(&flags);
             protocol_prepare_frame(g_current_frame,
-                                   g_next_seq++,
+                                   g_next_seq,
                                    t0_us,
                                    sample_rate,
                                    flags);
@@ -177,17 +197,18 @@ static void append_sample(uint16_t sample, uint32_t t0_us, uint32_t sample_rate)
         const uint16_t frame_min = g_current_min;
         const uint16_t frame_max = g_current_max;
         if (g_current_discard) {
-            g_range_settle_frames--;
+            if (g_range_settle_frames > 0u) {
+                g_range_settle_frames--;
+            }
+            g_pending_flags |= PROTOCOL_FLAG_GAP_BEFORE;
         } else {
             protocol_finish_frame(g_current_frame);
             queue_publish_reserved_frame();
+            g_next_seq++;
+            g_pending_flags = 0;
             update_auto_range(frame_min, frame_max);
         }
-        g_current_frame = NULL;
-        g_current_count = 0;
-        g_current_min = UINT16_MAX;
-        g_current_max = 0;
-        g_current_discard = false;
+        reset_current_frame();
     }
 }
 
@@ -200,19 +221,7 @@ static void sampler_core_capture_loop(void) {
         period_floor_us = 1u;
     }
 
-    g_capture_active = true;
-
     while (g_running) {
-        if (sample_rate != g_sample_rate) {
-            sample_rate = g_sample_rate;
-            period_q = ((uint64_t)1000000u << SAMPLE_PERIOD_Q_SHIFT) / sample_rate;
-            next_start_q = (uint64_t)time_us_32() << SAMPLE_PERIOD_Q_SHIFT;
-            period_floor_us = (uint32_t)(period_q >> SAMPLE_PERIOD_Q_SHIFT);
-            if (period_floor_us == 0u) {
-                period_floor_us = 1u;
-            }
-        }
-
         const uint32_t next_start_us = (uint32_t)(next_start_q >> SAMPLE_PERIOD_Q_SHIFT);
         while ((int32_t)(time_us_32() - next_start_us) < 0) {
             tight_loop_contents();
@@ -221,21 +230,28 @@ static void sampler_core_capture_loop(void) {
         ads8866_start_conversion();
         const uint32_t sample_start_us = time_us_32();
         busy_wait_us_32(ADS8866_CONVERSION_WAIT_US);
-        append_sample(ads8866_finish_conversion(), sample_start_us, sample_rate);
+        uint16_t sample;
+        if (ads8866_try_finish_conversion(&sample)) {
+            append_sample(sample, sample_start_us, sample_rate);
+        } else {
+            discard_current_frame();
+        }
         next_start_q += period_q;
 
         const uint32_t next_deadline_us = (uint32_t)(next_start_q >> SAMPLE_PERIOD_Q_SHIFT);
         if ((int32_t)(time_us_32() - next_deadline_us) >= (int32_t)period_floor_us) {
+            /* Every successful ADC result remains in the stream. Report slower
+             * scheduling separately from missing samples; it is not a gap. */
+            g_timing_overruns++;
+            g_timing_overrun_pending = true;
             next_start_q = (uint64_t)(time_us_32() + period_floor_us) << SAMPLE_PERIOD_Q_SHIFT;
         }
     }
 
-    g_current_frame = NULL;
-    g_current_count = 0;
-    g_current_min = UINT16_MAX;
-    g_current_max = 0;
-    g_current_discard = false;
+    reset_current_frame();
+    critical_section_enter_blocking(&g_queue_lock);
     g_capture_active = false;
+    critical_section_exit(&g_queue_lock);
 }
 
 static void sampler_core_entry(void) {
@@ -243,7 +259,15 @@ static void sampler_core_entry(void) {
     g_sampler_core_ready = true;
 
     while (true) {
-        if (g_running) {
+        /* Claim capture under the same lock that acknowledges STOP. Otherwise
+         * STOP can miss a core that has observed RUN but not yet set ACTIVE. */
+        critical_section_enter_blocking(&g_queue_lock);
+        const bool capture = g_running;
+        if (capture) {
+            g_capture_active = true;
+        }
+        critical_section_exit(&g_queue_lock);
+        if (capture) {
             sampler_core_capture_loop();
         }
 
@@ -270,6 +294,9 @@ bool sampler_set_rate(uint32_t sample_rate) {
     if (!protocol_sample_rate_supported(sample_rate)) {
         return false;
     }
+    if (sample_rate == g_sample_rate) {
+        return true;
+    }
 
     bool restart = sampler_is_running();
     if (restart) {
@@ -291,39 +318,38 @@ uint32_t sampler_get_rate(void) {
 }
 
 bool sampler_start(void) {
+    critical_section_enter_blocking(&g_queue_lock);
     if (g_running) {
+        critical_section_exit(&g_queue_lock);
         return true;
     }
-
-    while (g_capture_active) {
-        tight_loop_contents();
-    }
-
-    critical_section_enter_blocking(&g_queue_lock);
+    /* Every transition to stopped waits for ACTIVE to clear before returning. */
     queue_reset_locked();
-    critical_section_exit(&g_queue_lock);
-
-    g_current_count = 0;
-    g_current_frame = NULL;
-    g_current_min = UINT16_MAX;
-    g_current_max = 0;
-    g_current_discard = false;
+    reset_current_frame();
     g_next_seq = 0;
+    g_pending_flags = PROTOCOL_FLAG_STREAM_START;
+    g_timing_overrun_pending = false;
     reset_auto_range_state();
     if (g_auto_range) {
         ads8866_set_range(ADS8866_RANGE_1_OHM);
         g_range_settle_frames = AUTO_RANGE_SETTLE_FRAMES;
     }
     g_running = true;
+    critical_section_exit(&g_queue_lock);
 
     return true;
 }
 
 void sampler_stop(void) {
+    critical_section_enter_blocking(&g_queue_lock);
     g_running = false;
-
-    while (g_capture_active) {
+    bool active = g_capture_active;
+    critical_section_exit(&g_queue_lock);
+    while (active) {
         tight_loop_contents();
+        critical_section_enter_blocking(&g_queue_lock);
+        active = g_capture_active;
+        critical_section_exit(&g_queue_lock);
     }
 }
 
@@ -361,6 +387,10 @@ uint16_t sampler_get_last_sample(void) {
     return g_last_sample;
 }
 
+uint32_t sampler_get_timing_overruns(void) {
+    return g_timing_overruns;
+}
+
 void sampler_set_zero_code(uint16_t zero_code) {
     sampler_set_zero_code_for_range(ads8866_get_range(), zero_code);
 }
@@ -370,10 +400,19 @@ uint16_t sampler_get_zero_code(void) {
 }
 
 void sampler_set_zero_code_for_range(ads8866_range_t range, uint16_t zero_code) {
+    if (zero_code_for_range(range) == zero_code) {
+        return;
+    }
+    const bool restart = sampler_is_running();
+    sampler_stop();
     if (range == ADS8866_RANGE_10_OHM) {
         g_zero_code_10_ohm = zero_code;
     } else {
         g_zero_code_1_ohm = zero_code;
+    }
+    reset_auto_range_state();
+    if (restart) {
+        (void)sampler_start();
     }
 }
 
@@ -382,6 +421,9 @@ uint16_t sampler_get_zero_code_for_range(ads8866_range_t range) {
 }
 
 bool sampler_set_range(ads8866_range_t range) {
+    if (ads8866_get_range() == range) {
+        return true;
+    }
     bool restart = sampler_is_running();
     if (restart) {
         sampler_stop();
@@ -402,11 +444,19 @@ ads8866_range_t sampler_get_range(void) {
 }
 
 void sampler_set_auto_range(bool enabled) {
+    if (g_auto_range == enabled) {
+        return;
+    }
+    const bool restart = sampler_is_running();
+    sampler_stop();
     g_auto_range = enabled;
     reset_auto_range_state();
     if (enabled) {
-        (void)sampler_set_range(ADS8866_RANGE_1_OHM);
+        ads8866_set_range(ADS8866_RANGE_1_OHM);
         g_range_settle_frames = AUTO_RANGE_SETTLE_FRAMES;
+    }
+    if (restart) {
+        (void)sampler_start();
     }
 }
 
