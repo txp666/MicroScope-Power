@@ -1,0 +1,6 @@
+Library Adafruit nRFCrypto has been declared precompiled:
+Using precompiled library in /private/tmp/microscope-xiao-toolchain/data/packages/Seeeduino/hardware/nrf52/1.1.13/libraries/Adafruit_nRFCrypto/src/cortex-m4/fpv4-sp-d16-hard
+/private/tmp/microscope-xiao-toolchain/data/packages/Seeeduino/hardware/nrf52/1.1.13/tools/uf2conv/uf2conv.py:177: SyntaxWarning: invalid escape sequence '\s'
+  words = re.split('\s+', line)
+Sketch uses 133168 bytes (16%) of program storage space. Maximum is 811008 bytes.
+Global variables use 13848 bytes (5%) of dynamic memory, leaving 223720 bytes for local variables. Maximum is 237568 bytes.

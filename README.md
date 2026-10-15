@@ -28,6 +28,7 @@
 ## 目录
 
 - `firmware/`: Pico SDK 固件工程。
+- `tests/xiao_nrf52840_sense_plus/`: XIAO Sense Plus 综合测试固件、构建工具、固定大量程实测报告与图片。
 - `docs/`: 接线、协议、使用和排障文档。
 - `images/`: README 使用的实物照片与上位机截图。
 - `scripts/`: Windows 环境检查、Pico SDK 拉取和固件构建脚本。
@@ -122,6 +123,8 @@ Release assets 包含：
 使用 Chrome 或 Edge 打开 [modusignal 上位机](https://modusignal.cn/pages/devices/microscope-power/)，点击“连接设备”。连接设备后，先确认量程电阻值和零点，再开始采集。
 
 本仓库只维护固件与设备协议；网页开发、构建和回归验证均在 modusignal 仓库进行。
+
+使用 XIAO nRF52840 Sense Plus 作为被测负载，见 [综合测试程序与接线](tests/xiao_nrf52840_sense_plus/README.md)。同一个 UF2 在 USB 下输出外设自检结果，在 BAT 独立供电下执行约 18 秒负载序列后进入 System OFF。程序烧录到 XIAO，分析仪继续使用本仓库的 Pico 固件。固定大量程实测见 [功耗分析报告](tests/xiao_nrf52840_sense_plus/analysis-report.md)。
 
 ## 常用流程
 

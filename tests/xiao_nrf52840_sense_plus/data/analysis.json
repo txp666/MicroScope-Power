@@ -1,0 +1,367 @@
+{
+  "source_csv": "pico-power-scope-2026-10-15T13-19-44-043Z.csv",
+  "source_sha256": "899310bf9b5d2fd7259bfc49c26bad77fbb63fccfb75700e7a6b24dcc881a38f",
+  "board": "Seeed Studio XIAO nRF52840 Sense Plus",
+  "firmware_version": "XIAO-COMBINED-3",
+  "scope": "Fixed 1-ohm capture named above.",
+  "quality": {
+    "columns": [
+      "index",
+      "time_s",
+      "range_ohm",
+      "current_uA"
+    ],
+    "rows": 2812416,
+    "duration_s": 38.642380305,
+    "missing_values": 0,
+    "nonfinite_values": 0,
+    "index_discontinuities": 0,
+    "nonincreasing_timestamps": 0,
+    "range_ohm": [
+      1
+    ],
+    "range_switches": 0,
+    "gaps_over_1ms": 0,
+    "median_dt_us": 13.73799999981884,
+    "min_dt_us": 13.666999997496987,
+    "max_dt_us": 14.07100000072603
+  },
+  "full_window": {
+    "samples": 2812416,
+    "mean_uA": 997.7437997015514,
+    "median_uA": 6.103516,
+    "ac_rms_uA": 2289.659239188155,
+    "min_uA": -3.814697,
+    "max_uA": 27615.356445
+  },
+  "full_window_time_weighted_mean_uA": 997.7690033221814,
+  "peak_time_s": 14.898986922,
+  "peak_range_ohm": 1,
+  "sync_reference_s": 8.898,
+  "stages": {
+    "CPU": {
+      "start_s": 10,
+      "end_s": 11,
+      "samples": 72776,
+      "mean_uA": 6328.708857938592,
+      "median_uA": 6328.582764,
+      "ac_rms_uA": 37.387197779238065,
+      "min_uA": 6168.365479,
+      "max_uA": 6491.088867
+    },
+    "RGB red": {
+      "start_s": 12,
+      "end_s": 12.7,
+      "samples": 50947,
+      "mean_uA": 761.6110965795042,
+      "median_uA": 652.313232,
+      "ac_rms_uA": 843.3230591518077,
+      "min_uA": 95.367432,
+      "max_uA": 8657.836914
+    },
+    "RGB green": {
+      "start_s": 13,
+      "end_s": 13.7,
+      "samples": 50941,
+      "mean_uA": 219.98461491203548,
+      "median_uA": 100.708008,
+      "ac_rms_uA": 753.6076408711575,
+      "min_uA": -2.288818,
+      "max_uA": 7374.572754
+    },
+    "RGB blue": {
+      "start_s": 14,
+      "end_s": 14.7,
+      "samples": 50952,
+      "mean_uA": 442.13953975675145,
+      "median_uA": 330.352783,
+      "ac_rms_uA": 818.7789254891535,
+      "min_uA": 3.051758,
+      "max_uA": 8073.425293
+    },
+    "IMU": {
+      "start_s": 15.1,
+      "end_s": 17.5,
+      "samples": 174651,
+      "mean_uA": 3641.2757517890136,
+      "median_uA": 967.407227,
+      "ac_rms_uA": 3601.4698316892013,
+      "min_uA": 6.103516,
+      "max_uA": 9852.600098
+    },
+    "PDM": {
+      "start_s": 18.1,
+      "end_s": 20.5,
+      "samples": 174668,
+      "mean_uA": 2407.7496338815236,
+      "median_uA": 2008.056641,
+      "ac_rms_uA": 1532.2238845898576,
+      "min_uA": 975.799561,
+      "max_uA": 11556.243896
+    },
+    "BLE": {
+      "start_s": 21.1,
+      "end_s": 23.5,
+      "samples": 174670,
+      "mean_uA": 261.22321809556877,
+      "median_uA": 5.340576,
+      "ac_rms_uA": 1322.280922569625,
+      "min_uA": -3.051758,
+      "max_uA": 19734.954834
+    },
+    "VBAT": {
+      "start_s": 24.05,
+      "end_s": 24.75,
+      "samples": 50950,
+      "mean_uA": 251.68462126549557,
+      "median_uA": 5.340576,
+      "ac_rms_uA": 1077.8029401120334,
+      "min_uA": -3.051758,
+      "max_uA": 8523.55957
+    },
+    "Flash wait": {
+      "start_s": 25.05,
+      "end_s": 25.75,
+      "samples": 50952,
+      "mean_uA": 36.11594139064218,
+      "median_uA": 5.340576,
+      "ac_rms_uA": 194.75607590695915,
+      "min_uA": -3.051758,
+      "max_uA": 1643.371582
+    },
+    "Shutdown wait": {
+      "start_s": 26.3,
+      "end_s": 26.75,
+      "samples": 32750,
+      "mean_uA": 36.128595992702294,
+      "median_uA": 5.340576,
+      "ac_rms_uA": 195.0902476831593,
+      "min_uA": -3.051758,
+      "max_uA": 1616.668701
+    }
+  },
+  "sleep": {
+    "start_s": 27,
+    "end_s": 38.642380305,
+    "samples": 847393,
+    "mean_uA": 5.818539150998415,
+    "median_uA": 5.340576,
+    "ac_rms_uA": 6.465443970178686,
+    "min_uA": -3.814697,
+    "max_uA": 233.459473,
+    "duration_s": 11.642380305000003
+  },
+  "sleep_subwindows": [
+    {
+      "start_s": 27,
+      "end_s": 30,
+      "samples": 218358,
+      "mean_uA": 5.811977626031563,
+      "median_uA": 5.340576,
+      "ac_rms_uA": 6.337317632166197,
+      "min_uA": -3.814697,
+      "max_uA": 219.726563
+    },
+    {
+      "start_s": 30,
+      "end_s": 33,
+      "samples": 218353,
+      "mean_uA": 5.822687245203867,
+      "median_uA": 5.340576,
+      "ac_rms_uA": 6.536289545114967,
+      "min_uA": -3.814697,
+      "max_uA": 222.015381
+    },
+    {
+      "start_s": 33,
+      "end_s": 36,
+      "samples": 218357,
+      "mean_uA": 5.816333309200072,
+      "median_uA": 5.340576,
+      "ac_rms_uA": 6.325994008987062,
+      "min_uA": -3.814697,
+      "max_uA": 224.304199
+    },
+    {
+      "start_s": 36,
+      "end_s": 38.642380306,
+      "samples": 192325,
+      "mean_uA": 5.823783781973224,
+      "median_uA": 5.340576,
+      "ac_rms_uA": 6.6815946938838975,
+      "min_uA": -3.051758,
+      "max_uA": 233.459473
+    }
+  ],
+  "sleep_pulses": {
+    "threshold_uA": 100,
+    "merged_gap_us": 150,
+    "events": 53,
+    "median_width_us": 344.62900000420404,
+    "min_width_us": 301.1250000000132,
+    "max_width_us": 397.1639999988952,
+    "median_interval_ms": 219.54430049999905,
+    "median_peak_uA": 199.890137
+  },
+  "quantization_step_uA": 0.7629390000001877,
+  "timing_alignment": {
+    "sync_reference_s": 8.898777219,
+    "sync_plateau_candidates": [
+      {
+        "start_s": 8.898777219,
+        "end_s": 8.997505367,
+        "duration_s": 0.09872814800000107
+      },
+      {
+        "start_s": 9.097894961,
+        "end_s": 9.196709344,
+        "duration_s": 0.09881438300000056
+      },
+      {
+        "start_s": 9.297017305,
+        "end_s": 9.39589509,
+        "duration_s": 0.09887778499999911
+      }
+    ],
+    "sync_reference_note": "Approximate blue plateau onset; initialization overlaps the first marker.",
+    "search_half_width_ms": 10,
+    "checkpoints": [
+      {
+        "stage": "CPU",
+        "program_slot_s": [
+          1,
+          3
+        ],
+        "measured_activity_start_s": 9.898024234,
+        "threshold_uA": 3000,
+        "offset_from_reference_ms": -0.7529850000000948
+      },
+      {
+        "stage": "RGB",
+        "program_slot_s": [
+          3,
+          6
+        ],
+        "measured_activity_start_s": 11.898054074,
+        "threshold_uA": 400,
+        "offset_from_reference_ms": -0.7231450000002582
+      },
+      {
+        "stage": "IMU",
+        "program_slot_s": [
+          6,
+          9
+        ],
+        "measured_activity_start_s": 14.897734605,
+        "threshold_uA": 3000,
+        "offset_from_reference_ms": -1.0426139999992756
+      },
+      {
+        "stage": "PDM",
+        "program_slot_s": [
+          9,
+          12
+        ],
+        "measured_activity_start_s": 17.897707137,
+        "threshold_uA": 1000,
+        "offset_from_reference_ms": -1.0700819999982514
+      },
+      {
+        "stage": "BLE",
+        "program_slot_s": [
+          12,
+          15
+        ],
+        "measured_activity_start_s": 20.89763232,
+        "threshold_uA": 2000,
+        "offset_from_reference_ms": -1.1448989999998105
+      },
+      {
+        "stage": "VBAT",
+        "program_slot_s": [
+          15,
+          16
+        ],
+        "measured_activity_start_s": 23.897526445,
+        "threshold_uA": 2000,
+        "offset_from_reference_ms": -1.2507739999989553
+      },
+      {
+        "stage": "FLASH",
+        "program_slot_s": [
+          16,
+          17
+        ],
+        "measured_activity_start_s": 24.89751425,
+        "threshold_uA": 3000,
+        "offset_from_reference_ms": -1.2629689999990035
+      },
+      {
+        "stage": "SHUTDOWN_LED",
+        "program_slot_s": [
+          17,
+          18
+        ],
+        "measured_activity_start_s": 25.898382695,
+        "threshold_uA": 70,
+        "offset_from_reference_ms": -0.39452400000072885
+      }
+    ],
+    "cpu_continuous_load": {
+      "start_s": 9.898024234,
+      "end_s": 11.878347313,
+      "duration_s": 1.9803230790000015
+    },
+    "flash_continuous_activity": {
+      "start_s": 24.89751425,
+      "end_s": 24.919890922,
+      "duration_s": 0.022376672000000042
+    },
+    "shutdown_light_responses": [
+      {
+        "start_s": 25.898382695,
+        "end_s": 25.977622898,
+        "duration_s": 0.07924020300000123
+      },
+      {
+        "start_s": 26.05654898,
+        "end_s": 26.135852,
+        "duration_s": 0.07930302000000111
+      }
+    ],
+    "final_software_activity": [
+      {
+        "start_s": 26.897393852,
+        "end_s": 26.898092313,
+        "duration_s": 0.0006984609999989289
+      },
+      {
+        "start_s": 26.907408828,
+        "end_s": 26.90769807,
+        "duration_s": 0.00028924199999735833
+      }
+    ],
+    "final_activity_start_separation_ms": 10.014976000000786,
+    "sleep_transition_approx_s": 26.908,
+    "samples_over_300uA_after_final_activity": 0,
+    "expected_sequence_s": 18,
+    "post_sequence_delay_ms": 10,
+    "method": "Current threshold edges in local search windows, not GPIO timestamps. Intervals may include CPU transients and analog edge response. CSV frame-interpolated times support sequence alignment, not clock calibration."
+  },
+  "display": {
+    "voltage_input_V": 3.782,
+    "nominal_sampling_option_sps": 100000,
+    "window_setting_s": 60,
+    "manual_y_max_uA": 14507.201,
+    "samples_above_y_max": 287,
+    "screenshot_current_uA": 3.815,
+    "screenshot_energy_mJ": 144.155,
+    "voltage_is_independent_measurement": false
+  },
+  "methods": {
+    "mean": "All samples in each stated interval, unfiltered and without excluding current spikes.",
+    "ac_rms": "Population standard deviation after subtracting the interval mean.",
+    "timing": "Exported frame-interpolated time values; no independent sample-level timestamps.",
+    "stage_identity": "Aligned to firmware sequence and current markers; not explicit CSV phase labels."
+  }
+}
