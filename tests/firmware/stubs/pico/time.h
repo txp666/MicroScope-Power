@@ -12,3 +12,5 @@ absolute_time_t get_absolute_time(void);
 absolute_time_t make_timeout_time_ms(uint32_t ms);
 uint32_t to_ms_since_boot(absolute_time_t time);
 void sleep_ms(uint32_t ms);
+absolute_time_t delayed_by_ms(absolute_time_t time, uint32_t ms);
+void sleep_until(absolute_time_t target);

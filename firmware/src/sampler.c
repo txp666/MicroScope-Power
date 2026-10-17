@@ -15,6 +15,11 @@
 #define AUTO_RANGE_10_TO_1_CONFIRM_FRAMES 1u
 #define AUTO_RANGE_1_TO_10_CONFIRM_FRAMES 64u
 #define AUTO_RANGE_SETTLE_FRAMES 6u
+#define LOCAL_BUCKET_US 50000u
+#define LOCAL_BUCKET_COUNT 40u
+#define LOCAL_MAX_GAP_US 5000u
+#define LOCAL_RANGE_BATCH_SAMPLES 256u
+#define LOCAL_SETTLE_SAMPLES (AUTO_RANGE_SETTLE_FRAMES * SAMPLE_BLOCK_SIZE)
 
 static frame_queue_t g_queue;
 static critical_section_t g_queue_lock;
@@ -40,6 +45,45 @@ static uint8_t g_range_settle_frames = 0;
 static uint16_t g_pending_flags = 0;
 static bool g_timing_overrun_pending = false;
 static volatile uint32_t g_timing_overruns = 0;
+
+typedef struct {
+    uint64_t code_sum;
+    uint32_t sample_count;
+} local_bucket_t;
+
+static local_bucket_t g_local_buckets[LOCAL_BUCKET_COUNT];
+static uint64_t g_local_code_sum = 0;
+static uint32_t g_local_sample_count = 0;
+static uint8_t g_local_bucket_index = 0;
+static uint8_t g_local_bucket_count = 0;
+static local_bucket_t g_local_partial;
+static uint32_t g_local_bucket_start_us = 0;
+static uint32_t g_local_last_bucket_us = 0;
+static uint32_t g_local_last_sample_us = 0;
+static bool g_local_time_valid = false;
+static bool g_local_metadata_valid = false;
+static ads8866_range_t g_local_range = ADS8866_RANGE_1_OHM;
+static uint16_t g_local_zero = 0;
+static uint16_t g_local_batch_count = 0;
+static uint16_t g_local_batch_min = UINT16_MAX;
+static uint16_t g_local_batch_max = 0;
+static uint32_t g_local_settle_samples = 0;
+
+/* Caller holds g_queue_lock, which also owns idle ADS8866 transactions. */
+static void local_current_reset_locked(void) {
+    memset(g_local_buckets, 0, sizeof(g_local_buckets));
+    g_local_code_sum = 0;
+    g_local_sample_count = 0;
+    g_local_bucket_index = 0;
+    g_local_bucket_count = 0;
+    memset(&g_local_partial, 0, sizeof(g_local_partial));
+    g_local_time_valid = false;
+    g_local_metadata_valid = false;
+    g_local_batch_count = 0;
+    g_local_batch_min = UINT16_MAX;
+    g_local_batch_max = 0;
+    g_local_settle_samples = 0;
+}
 
 static uint16_t code_distance(uint16_t a, uint16_t b) {
     return a > b ? (uint16_t)(a - b) : (uint16_t)(b - a);
@@ -115,6 +159,153 @@ static void update_auto_range(uint16_t min_code, uint16_t max_code) {
     } else {
         g_range_up_count = 0;
     }
+}
+
+/* Close only an already sampled bucket; never fabricate missing samples. */
+static void local_current_roll_bucket_locked(uint32_t now_us) {
+    if (g_local_metadata_valid && g_local_partial.sample_count > 0u &&
+        (uint32_t)(now_us - g_local_bucket_start_us) >= LOCAL_BUCKET_US) {
+        local_bucket_t *old = &g_local_buckets[g_local_bucket_index];
+        g_local_code_sum -= old->code_sum;
+        g_local_sample_count -= old->sample_count;
+        *old = g_local_partial;
+        g_local_code_sum += old->code_sum;
+        g_local_sample_count += old->sample_count;
+        g_local_bucket_index = (uint8_t)((g_local_bucket_index + 1u) % LOCAL_BUCKET_COUNT);
+        if (g_local_bucket_count < LOCAL_BUCKET_COUNT) {
+            ++g_local_bucket_count;
+        }
+        g_local_bucket_start_us += LOCAL_BUCKET_US;
+        g_local_last_bucket_us = g_local_bucket_start_us;
+        memset(&g_local_partial, 0, sizeof(g_local_partial));
+    }
+}
+
+static void local_current_append_locked(uint16_t sample, uint32_t now_us,
+                                        ads8866_range_t range, uint16_t zero) {
+    if (!g_local_metadata_valid) {
+        g_local_range = range;
+        g_local_zero = zero;
+        g_local_bucket_start_us = now_us;
+        g_local_metadata_valid = true;
+    }
+    local_current_roll_bucket_locked(now_us);
+
+    g_local_partial.code_sum += sample;
+    ++g_local_partial.sample_count;
+}
+
+static void sampler_core_local_tick_locked(void) {
+    uint32_t now_us = time_us_32();
+    if (g_local_time_valid &&
+        (uint32_t)(now_us - g_local_last_sample_us) > LOCAL_MAX_GAP_US) {
+        uint32_t settling = g_local_settle_samples;
+        local_current_reset_locked();
+        g_local_settle_samples = settling;
+    }
+
+    ads8866_range_t range = ads8866_get_range();
+    uint16_t zero = zero_code_for_range(range);
+    if (g_local_metadata_valid && (range != g_local_range || zero != g_local_zero)) {
+        local_current_reset_locked();
+        g_local_settle_samples = LOCAL_SETTLE_SAMPLES;
+    }
+
+    ads8866_start_conversion();
+    busy_wait_us_32(ADS8866_CONVERSION_WAIT_US);
+    uint16_t sample;
+    if (!ads8866_try_finish_conversion(&sample)) {
+        uint32_t settling = g_local_settle_samples;
+        local_current_reset_locked();
+        g_local_settle_samples = settling;
+        /* Each loop performs one real conversion, never a catch-up burst. */
+        g_local_last_sample_us = time_us_32();
+        g_local_time_valid = true;
+        return;
+    }
+    g_local_last_sample_us = time_us_32();
+    g_local_time_valid = true;
+
+    if (g_local_settle_samples > 0u) {
+        --g_local_settle_samples;
+        return;
+    }
+
+    if (sample < g_local_batch_min) { g_local_batch_min = sample; }
+    if (sample > g_local_batch_max) { g_local_batch_max = sample; }
+    if (++g_local_batch_count >= LOCAL_RANGE_BATCH_SAMPLES) {
+        update_auto_range(g_local_batch_min, g_local_batch_max);
+        g_local_batch_count = 0;
+        g_local_batch_min = UINT16_MAX;
+        g_local_batch_max = 0;
+        if (ads8866_get_range() != range) {
+            local_current_reset_locked();
+            g_local_settle_samples = LOCAL_SETTLE_SAMPLES;
+            /* Idle settling does not consume or publish stream frames. */
+            g_range_settle_frames = 0;
+            return;
+        }
+    }
+    local_current_append_locked(sample, now_us, range, zero);
+}
+
+static bool local_current_snapshot_locked(sampler_local_current_t *out) {
+    uint32_t now_us = time_us_32();
+    bool metadata_matches = g_local_metadata_valid &&
+                            g_local_range == ads8866_get_range() &&
+                            g_local_zero == zero_code_for_range(g_local_range);
+    if (!g_running && !g_capture_active && metadata_matches && g_local_time_valid &&
+        (uint32_t)(now_us - g_local_last_sample_us) <= LOCAL_MAX_GAP_US) {
+        local_current_roll_bucket_locked(now_us);
+    }
+    bool valid = !g_running && !g_capture_active &&
+                 metadata_matches && g_local_bucket_count == LOCAL_BUCKET_COUNT &&
+                 g_local_sample_count > 0u &&
+                 (uint32_t)(now_us - g_local_last_sample_us) <= LOCAL_MAX_GAP_US &&
+                 (uint32_t)(now_us - g_local_last_bucket_us) <= LOCAL_BUCKET_US + LOCAL_MAX_GAP_US;
+    if (valid) {
+        *out = (sampler_local_current_t){
+            .code_sum = g_local_code_sum,
+            .sample_count = g_local_sample_count,
+            .age_us = (uint32_t)(now_us - g_local_last_bucket_us),
+            .range = g_local_range,
+            .zero_code = g_local_zero,
+        };
+    }
+    return valid;
+}
+
+bool sampler_get_local_current(sampler_local_current_t *out) {
+    if (!out) { return false; }
+    critical_section_enter_blocking(&g_queue_lock);
+    bool valid = local_current_snapshot_locked(out);
+    critical_section_exit(&g_queue_lock);
+    return valid;
+}
+
+bool sampler_zero_local_current(void) {
+    critical_section_enter_blocking(&g_queue_lock);
+    sampler_local_current_t snapshot;
+    bool valid = local_current_snapshot_locked(&snapshot);
+    if (valid) {
+        uint16_t zero = (uint16_t)((snapshot.code_sum + snapshot.sample_count / 2u) /
+                                   snapshot.sample_count);
+        if (snapshot.range == ADS8866_RANGE_10_OHM) {
+            g_zero_code_10_ohm = zero;
+        } else {
+            g_zero_code_1_ohm = zero;
+        }
+        reset_auto_range_state();
+        local_current_reset_locked();
+    }
+    critical_section_exit(&g_queue_lock);
+    return valid;
+}
+
+void sampler_reset_local_current(void) {
+    critical_section_enter_blocking(&g_queue_lock);
+    local_current_reset_locked();
+    critical_section_exit(&g_queue_lock);
 }
 
 static void queue_reset_locked(void) {
@@ -265,6 +456,8 @@ static void sampler_core_entry(void) {
         const bool capture = g_running;
         if (capture) {
             g_capture_active = true;
+        } else {
+            sampler_core_local_tick_locked();
         }
         critical_section_exit(&g_queue_lock);
         if (capture) {
@@ -280,6 +473,7 @@ void sampler_init(void) {
 
     critical_section_enter_blocking(&g_queue_lock);
     queue_reset_locked();
+    local_current_reset_locked();
     critical_section_exit(&g_queue_lock);
 
     ads8866_set_sample_rate(g_sample_rate);
@@ -303,8 +497,11 @@ bool sampler_set_rate(uint32_t sample_rate) {
         sampler_stop();
     }
 
+    critical_section_enter_blocking(&g_queue_lock);
     g_sample_rate = sample_rate;
     ads8866_set_sample_rate(g_sample_rate);
+    local_current_reset_locked();
+    critical_section_exit(&g_queue_lock);
 
     if (restart) {
         return sampler_start();
@@ -325,6 +522,7 @@ bool sampler_start(void) {
     }
     /* Every transition to stopped waits for ACTIVE to clear before returning. */
     queue_reset_locked();
+    local_current_reset_locked();
     reset_current_frame();
     g_next_seq = 0;
     g_pending_flags = PROTOCOL_FLAG_STREAM_START;
@@ -343,6 +541,7 @@ bool sampler_start(void) {
 void sampler_stop(void) {
     critical_section_enter_blocking(&g_queue_lock);
     g_running = false;
+    local_current_reset_locked();
     bool active = g_capture_active;
     critical_section_exit(&g_queue_lock);
     while (active) {
@@ -392,11 +591,14 @@ uint32_t sampler_get_timing_overruns(void) {
 }
 
 void sampler_set_zero_code(uint16_t zero_code) {
-    sampler_set_zero_code_for_range(ads8866_get_range(), zero_code);
+    critical_section_enter_blocking(&g_queue_lock);
+    ads8866_range_t range = ads8866_get_range();
+    critical_section_exit(&g_queue_lock);
+    sampler_set_zero_code_for_range(range, zero_code);
 }
 
 uint16_t sampler_get_zero_code(void) {
-    return sampler_get_zero_code_for_range(ads8866_get_range());
+    return sampler_get_zero_code_for_range(sampler_get_range());
 }
 
 void sampler_set_zero_code_for_range(ads8866_range_t range, uint16_t zero_code) {
@@ -405,12 +607,15 @@ void sampler_set_zero_code_for_range(ads8866_range_t range, uint16_t zero_code) 
     }
     const bool restart = sampler_is_running();
     sampler_stop();
+    critical_section_enter_blocking(&g_queue_lock);
     if (range == ADS8866_RANGE_10_OHM) {
         g_zero_code_10_ohm = zero_code;
     } else {
         g_zero_code_1_ohm = zero_code;
     }
     reset_auto_range_state();
+    local_current_reset_locked();
+    critical_section_exit(&g_queue_lock);
     if (restart) {
         (void)sampler_start();
     }
@@ -421,7 +626,10 @@ uint16_t sampler_get_zero_code_for_range(ads8866_range_t range) {
 }
 
 bool sampler_set_range(ads8866_range_t range) {
-    if (ads8866_get_range() == range) {
+    critical_section_enter_blocking(&g_queue_lock);
+    bool unchanged = ads8866_get_range() == range;
+    critical_section_exit(&g_queue_lock);
+    if (unchanged) {
         return true;
     }
     bool restart = sampler_is_running();
@@ -429,8 +637,12 @@ bool sampler_set_range(ads8866_range_t range) {
         sampler_stop();
     }
 
+    critical_section_enter_blocking(&g_queue_lock);
     ads8866_set_range(range);
     reset_auto_range_state();
+    local_current_reset_locked();
+    g_local_settle_samples = LOCAL_SETTLE_SAMPLES;
+    critical_section_exit(&g_queue_lock);
 
     if (restart) {
         return sampler_start();
@@ -440,7 +652,10 @@ bool sampler_set_range(ads8866_range_t range) {
 }
 
 ads8866_range_t sampler_get_range(void) {
-    return ads8866_get_range();
+    critical_section_enter_blocking(&g_queue_lock);
+    ads8866_range_t range = ads8866_get_range();
+    critical_section_exit(&g_queue_lock);
+    return range;
 }
 
 void sampler_set_auto_range(bool enabled) {
@@ -449,12 +664,16 @@ void sampler_set_auto_range(bool enabled) {
     }
     const bool restart = sampler_is_running();
     sampler_stop();
+    critical_section_enter_blocking(&g_queue_lock);
     g_auto_range = enabled;
     reset_auto_range_state();
+    local_current_reset_locked();
     if (enabled) {
         ads8866_set_range(ADS8866_RANGE_1_OHM);
         g_range_settle_frames = AUTO_RANGE_SETTLE_FRAMES;
+        g_local_settle_samples = LOCAL_SETTLE_SAMPLES;
     }
+    critical_section_exit(&g_queue_lock);
     if (restart) {
         (void)sampler_start();
     }

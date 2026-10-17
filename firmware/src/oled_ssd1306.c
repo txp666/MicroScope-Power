@@ -187,8 +187,8 @@ void oled_write_line(uint8_t page, const char *text) {
     char line[OLED_TEXT_COLS];
     for (uint8_t i = 0; i < OLED_TEXT_COLS; ++i) {
         char c = ' ';
-        if (text && text[i]) {
-            c = text[i];
+        if (text && *text) {
+            c = *text++;
         }
         if (c < 32 || c > 126) {
             c = ' ';

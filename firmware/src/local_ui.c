@@ -16,17 +16,16 @@
 
 #define UI_REFRESH_MS 200u
 #define DAC_SAVE_DELAY_MS 1500u
+#define ZERO_FEEDBACK_MS 1500u
 #define STARTUP_ANIM_MS 3000u
 #define STARTUP_FRAME_MS 20u
 #define STEP_COUNT 3u
 #define FAST_STEP_MULTIPLIER 10u
-#define OLED_VOLTAGE_FILTER_SHIFT 2u
+#define OLED_VOLTAGE_FILTER_SHIFT 3u
 #define OLED_CURRENT_FILTER_SHIFT 2u
+#define OLED_CURRENT_HYSTERESIS_UA_X100 5ll
+#define OLED_FILTER_SCALE 256ll
 #define FRONTEND_GAIN 50u
-#define LOCAL_CURRENT_AVG_SAMPLES 8u
-#define LOCAL_RANGE_10_TO_1_DELTA_CODE 30000u
-#define LOCAL_RANGE_1_TO_10_DELTA_CODE 1800u
-#define LOCAL_RANGE_SETTLE_READS 4u
 #define DEFAULT_SENSE_1_MOHM 1000u
 #define DEFAULT_SENSE_10_MOHM 10000u
 
@@ -35,11 +34,22 @@ static uint32_t g_output_save_due_ms = 0;
 static uint8_t g_step_index = 1;
 static bool g_press_turn_used = false;
 static bool g_output_save_pending = false;
-static bool g_output_save_request = false;
+static bool g_settings_save_request = false;
+typedef enum {
+    ZERO_FEEDBACK_NONE = 0,
+    ZERO_FEEDBACK_OK,
+    ZERO_FEEDBACK_WAIT,
+} zero_feedback_t;
+static zero_feedback_t g_zero_feedback = ZERO_FEEDBACK_NONE;
+static uint32_t g_zero_feedback_due_ms = 0;
 static bool g_display_voltage_valid = false;
 static uint32_t g_display_voltage_mv = 0;
 static bool g_display_current_valid = false;
-static int32_t g_display_current_ua = 0;
+// Keep hundredths of a microamp through conversion and display filtering.
+static int64_t g_display_current_ua_x100 = 0;
+// Retain sub-unit fractions so stronger smoothing still converges at the last digit.
+static int64_t g_voltage_filter_accumulator = 0;
+static int64_t g_current_filter_accumulator = 0;
 static ads8866_range_t g_display_current_range = ADS8866_RANGE_10_OHM;
 static uint16_t g_display_current_zero = 0;
 static uint32_t g_sense_1_mohm = DEFAULT_SENSE_1_MOHM;
@@ -285,47 +295,60 @@ static void format_step_value(char *out, uint32_t out_size) {
     }
 }
 
-static void format_current_value(char *out, uint32_t out_size, int32_t ua) {
-    int32_t abs_ua = ua < 0 ? -ua : ua;
-    const char *sign = ua < 0 ? "-" : "";
+static void format_current_value(char *out, uint32_t out_size, int64_t ua_x100) {
+    int64_t abs_ua_x100 = ua_x100 < 0 ? -ua_x100 : ua_x100;
+    const char *sign = ua_x100 < 0 ? "-" : "";
 
-    if (abs_ua >= 1000000) {
+    if (abs_ua_x100 >= 100000000ll) {
         snprintf(out,
                  out_size,
                  "%s%ld.%02ldA",
                  sign,
-                 (long)(abs_ua / 1000000),
-                 (long)((abs_ua % 1000000) / 10000));
-    } else if (abs_ua >= 1000) {
+                 (long)(abs_ua_x100 / 100000000ll),
+                 (long)((abs_ua_x100 % 100000000ll) / 1000000ll));
+    } else if (abs_ua_x100 >= 100000ll) {
         snprintf(out,
                  out_size,
                  "%s%ld.%02ldMA",
                  sign,
-                 (long)(abs_ua / 1000),
-                 (long)((abs_ua % 1000) / 10));
+                 (long)(abs_ua_x100 / 100000ll),
+                 (long)((abs_ua_x100 % 100000ll) / 1000ll));
     } else {
-        snprintf(out, out_size, "%s%ldUA", sign, (long)abs_ua);
+        snprintf(out,
+                 out_size,
+                 "%s%ld.%02ldUA",
+                 sign,
+                 (long)(abs_ua_x100 / 100ll),
+                 (long)(abs_ua_x100 % 100ll));
     }
+}
+
+static int64_t filter_signed_iir(int64_t previous, int64_t measured, uint8_t shift) {
+    int64_t delta = measured - previous;
+    int64_t half = 1ll << (shift - 1u);
+    if (delta >= 0) {
+        return previous + ((delta + half) >> shift);
+    }
+    return previous - (((-delta) + half) >> shift);
+}
+
+static int64_t filter_display_measurement(int64_t measured, int64_t *accumulator,
+                                          uint8_t shift, bool reset) {
+    int64_t target = measured * OLED_FILTER_SCALE;
+    *accumulator = reset ? target : filter_signed_iir(*accumulator, target, shift);
+    if (*accumulator >= 0) {
+        return (*accumulator + OLED_FILTER_SCALE / 2) / OLED_FILTER_SCALE;
+    }
+    return -((-*accumulator + OLED_FILTER_SCALE / 2) / OLED_FILTER_SCALE);
 }
 
 static uint32_t filtered_output_voltage_mv(void) {
     uint32_t measured_mv = adc_voltage_read_input_mv(NULL, NULL);
-    if (!g_display_voltage_valid) {
-        g_display_voltage_mv = measured_mv;
-        g_display_voltage_valid = true;
-        return g_display_voltage_mv;
-    }
-
-    g_display_voltage_mv =
-        ((g_display_voltage_mv * ((1u << OLED_VOLTAGE_FILTER_SHIFT) - 1u)) +
-         measured_mv +
-         (1u << (OLED_VOLTAGE_FILTER_SHIFT - 1u))) >>
-        OLED_VOLTAGE_FILTER_SHIFT;
+    g_display_voltage_mv = (uint32_t)filter_display_measurement(
+        measured_mv, &g_voltage_filter_accumulator, OLED_VOLTAGE_FILTER_SHIFT,
+        !g_display_voltage_valid);
+    g_display_voltage_valid = true;
     return g_display_voltage_mv;
-}
-
-static uint16_t code_distance(uint16_t a, uint16_t b) {
-    return a > b ? (uint16_t)(a - b) : (uint16_t)(b - a);
 }
 
 static uint32_t sense_milliohm_for_range(ads8866_range_t range) {
@@ -343,134 +366,65 @@ void local_ui_set_sense_milliohm(ads8866_range_t range, uint32_t milliohm) {
         g_sense_1_mohm = milliohm;
     }
     g_display_current_valid = false;
+    sampler_reset_local_current();
 }
 
 uint32_t local_ui_get_sense_milliohm(ads8866_range_t range) {
     return sense_milliohm_for_range(range);
 }
 
-static bool read_ads_average(uint16_t *code_out) {
-    uint32_t sum = 0;
-    for (uint32_t i = 0; i < LOCAL_CURRENT_AVG_SAMPLES; ++i) {
-        uint16_t sample;
-        if (!ads8866_try_read_sample(&sample)) {
-            return false;
-        }
-        sum += sample;
-    }
-    *code_out = (uint16_t)((sum + (LOCAL_CURRENT_AVG_SAMPLES / 2u)) / LOCAL_CURRENT_AVG_SAMPLES);
-    return true;
-}
-
-static void settle_ads_reads(void) {
-    for (uint32_t i = 0; i < LOCAL_RANGE_SETTLE_READS; ++i) {
-        uint16_t ignored;
-        (void)ads8866_try_read_sample(&ignored);
-    }
-}
-
-static bool read_current_code(ads8866_range_t *range_out, uint16_t *code_out) {
-    ads8866_range_t range = ads8866_get_range();
-    uint16_t code;
-    if (!read_ads_average(&code)) {
-        return false;
-    }
-
-    if (sampler_get_auto_range()) {
-        uint16_t zero = sampler_get_zero_code_for_range(range);
-        uint16_t delta = code_distance(code, zero);
-        if (range == ADS8866_RANGE_10_OHM) {
-            if (ads8866_codes_at_rail(code, code, zero) ||
-                delta >= LOCAL_RANGE_10_TO_1_DELTA_CODE) {
-                ads8866_set_range(ADS8866_RANGE_1_OHM);
-                settle_ads_reads();
-                range = ADS8866_RANGE_1_OHM;
-                if (!read_ads_average(&code)) {
-                    return false;
-                }
-            }
-        } else if (delta <= LOCAL_RANGE_1_TO_10_DELTA_CODE &&
-                   !ads8866_codes_at_rail(code, code, zero)) {
-            ads8866_set_range(ADS8866_RANGE_10_OHM);
-            settle_ads_reads();
-            range = ADS8866_RANGE_10_OHM;
-            if (!read_ads_average(&code)) {
-                return false;
-            }
-        }
-    } else {
-        range = sampler_get_range();
-        if (ads8866_get_range() != range) {
-            ads8866_set_range(range);
-            settle_ads_reads();
-        }
-        if (!read_ads_average(&code)) {
-            return false;
-        }
-    }
-
-    if (range_out) {
-        *range_out = range;
-    }
-    *code_out = code;
-    return true;
-}
-
-static int32_t code_to_microamps(uint16_t code, ads8866_range_t range) {
-    const int32_t delta_code =
-        (int32_t)code - (int32_t)sampler_get_zero_code_for_range(range);
+static int64_t code_to_microamps_x100(int64_t code_x256, ads8866_range_t range,
+                                     uint16_t zero_code) {
+    const int64_t delta_code_x256 = code_x256 - (int64_t)zero_code * OLED_FILTER_SCALE;
     const uint32_t sense_mohm = sense_milliohm_for_range(range);
     const int64_t denominator =
-        (int64_t)65536 * (int64_t)FRONTEND_GAIN * (int64_t)sense_mohm;
+        (int64_t)65536 * (int64_t)FRONTEND_GAIN * (int64_t)sense_mohm * OLED_FILTER_SCALE;
     int64_t numerator =
-        (int64_t)delta_code * (int64_t)ADS8866_REF_MV * 1000000ll;
+        delta_code_x256 * (int64_t)ADS8866_REF_MV * 100000000ll;
 
     if (numerator >= 0) {
         numerator += denominator / 2;
     } else {
         numerator -= denominator / 2;
     }
-    return (int32_t)(numerator / denominator);
+    return numerator / denominator;
 }
 
-static int32_t filter_signed_iir(int32_t previous, int32_t measured, uint8_t shift) {
-    int32_t delta = measured - previous;
-    int32_t half = (int32_t)(1u << (shift - 1u));
-    if (delta >= 0) {
-        return previous + ((delta + half) >> shift);
-    }
-    return previous - (((-delta) + half) >> shift);
-}
-
-static int32_t filtered_current_ua(void) {
-    ads8866_range_t range = ADS8866_RANGE_10_OHM;
-    uint16_t code;
-    if (!read_current_code(&range, &code)) {
-        return g_display_current_ua;
-    }
-    uint16_t zero = sampler_get_zero_code_for_range(range);
-    int32_t measured_ua = code_to_microamps(code, range);
-
-    if (!g_display_current_valid ||
-        range != g_display_current_range ||
-        zero != g_display_current_zero) {
-        g_display_current_ua = measured_ua;
-        g_display_current_valid = true;
-        g_display_current_range = range;
-        g_display_current_zero = zero;
-        return g_display_current_ua;
+static int64_t filtered_current_ua_x100(void) {
+    sampler_local_current_t current;
+    if (!sampler_get_local_current(&current) || current.sample_count == 0u) {
+        g_display_current_valid = false;
+        return g_display_current_ua_x100;
     }
 
-    g_display_current_ua =
-        filter_signed_iir(g_display_current_ua, measured_ua, OLED_CURRENT_FILTER_SHIFT);
-    return g_display_current_ua;
+    // Average before converting, retaining fractional ADC codes without multiplying
+    // a whole second's sum by the current conversion factor (which could overflow).
+    int64_t code_x256 = (int64_t)((current.code_sum * OLED_FILTER_SCALE +
+                                  current.sample_count / 2u) / current.sample_count);
+    int64_t measured_ua_x100 =
+        code_to_microamps_x100(code_x256, current.range, current.zero_code);
+
+    bool reset = !g_display_current_valid ||
+        current.range != g_display_current_range ||
+        current.zero_code != g_display_current_zero;
+    int64_t filtered_ua_x100 = filter_display_measurement(
+        measured_ua_x100, &g_current_filter_accumulator, OLED_CURRENT_FILTER_SHIFT, reset);
+    int64_t change = filtered_ua_x100 - g_display_current_ua_x100;
+    if (reset || change >= OLED_CURRENT_HYSTERESIS_UA_X100 ||
+        change <= -OLED_CURRENT_HYSTERESIS_UA_X100) {
+        g_display_current_ua_x100 = filtered_ua_x100;
+    }
+    g_display_current_valid = true;
+    g_display_current_range = current.range;
+    g_display_current_zero = current.zero_code;
+    return g_display_current_ua_x100;
 }
 
 static void draw_screen(void) {
     char line[OLED_TEXT_COLS + 1u];
     char step_line[6];
     uint32_t output_mv = filtered_output_voltage_mv();
-    int32_t current_ua = filtered_current_ua();
+    int64_t current_ua_x100 = filtered_current_ua_x100();
 
     oled_clear_line(0);
     format_voltage_value(line, sizeof(line), output_mv);
@@ -478,9 +432,19 @@ static void draw_screen(void) {
     oled_write_line2x_with_right_text(1, line, step_line);
     oled_clear_line(3);
     oled_clear_line(4);
-    format_current_value(line, sizeof(line), current_ua);
+    if (g_display_current_valid) {
+        format_current_value(line, sizeof(line), current_ua_x100);
+    } else {
+        snprintf(line, sizeof(line), "--.--UA");
+    }
     oled_write_line2x(5, line);
-    oled_clear_line(7);
+    if (g_zero_feedback == ZERO_FEEDBACK_OK) {
+        oled_write_line(7, "ZERO OK");
+    } else if (g_zero_feedback == ZERO_FEEDBACK_WAIT) {
+        oled_write_line(7, "ZERO WAIT");
+    } else {
+        oled_clear_line(7);
+    }
 }
 
 void local_ui_init(void) {
@@ -492,12 +456,12 @@ void local_ui_init(void) {
     draw_screen();
 }
 
-bool local_ui_take_output_save_request(void) {
-    if (!g_output_save_request) {
+bool local_ui_take_settings_save_request(void) {
+    if (!g_settings_save_request) {
         return false;
     }
 
-    g_output_save_request = false;
+    g_settings_save_request = false;
     return true;
 }
 
@@ -505,6 +469,12 @@ void local_ui_update(uint32_t now_ms) {
     bool was_pressed = encoder_is_pressed();
     encoder_update(now_ms);
     buzzer_update(now_ms);
+
+    if (g_zero_feedback != ZERO_FEEDBACK_NONE &&
+        (int32_t)(now_ms - g_zero_feedback_due_ms) >= 0) {
+        g_zero_feedback = ZERO_FEEDBACK_NONE;
+        g_next_refresh_ms = 0;
+    }
 
     int16_t delta = encoder_get_delta();
     if (delta != 0) {
@@ -529,20 +499,37 @@ void local_ui_update(uint32_t now_ms) {
         g_next_refresh_ms = 0;
     }
 
-    if (encoder_get_click()) {
-        if (g_press_turn_used) {
-            g_press_turn_used = false;
-            g_next_refresh_ms = 0;
-            return;
+    if (encoder_get_long_press() && encoder_is_pressed() && !g_press_turn_used) {
+        g_press_turn_used = true;
+        if (sampler_zero_local_current()) {
+            g_display_current_valid = false;
+            g_current_filter_accumulator = 0;
+            g_settings_save_request = true;
+            g_zero_feedback = ZERO_FEEDBACK_OK;
+            buzzer_tone(2200u, 120u);
+        } else {
+            g_zero_feedback = ZERO_FEEDBACK_WAIT;
+            buzzer_tone(500u, 80u);
         }
-        g_step_index = (uint8_t)((g_step_index + 1u) % STEP_COUNT);
-        buzzer_tone(1800u, 35u);
+        g_zero_feedback_due_ms = now_ms + ZERO_FEEDBACK_MS;
         g_next_refresh_ms = 0;
+    }
+
+    if (encoder_get_click()) {
+        if (!g_press_turn_used) {
+            g_step_index = (uint8_t)((g_step_index + 1u) % STEP_COUNT);
+            buzzer_tone(1800u, 35u);
+        }
+        g_next_refresh_ms = 0;
+    }
+    // A long press or a press-turn gesture may suppress the encoder click entirely.
+    if (!encoder_is_pressed()) {
+        g_press_turn_used = false;
     }
 
     if (g_output_save_pending && (int32_t)(now_ms - g_output_save_due_ms) >= 0) {
         g_output_save_pending = false;
-        g_output_save_request = true;
+        g_settings_save_request = true;
     }
 
     if (g_next_refresh_ms == 0u || (int32_t)(now_ms - g_next_refresh_ms) >= 0) {

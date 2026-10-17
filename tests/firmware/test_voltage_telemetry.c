@@ -45,7 +45,7 @@ void ads8866_init(void) {}
 void sampler_init(void) {}
 void local_ui_init(void) { mock_time += 3000000u; }
 void local_ui_update(uint32_t now_ms) { (void)now_ms; ui_updates++; }
-bool local_ui_take_output_save_request(void) { return false; }
+bool local_ui_take_settings_save_request(void) { return false; }
 void local_ui_set_sense_milliohm(ads8866_range_t range, uint32_t milliohm) {
     (void)range; (void)milliohm;
 }

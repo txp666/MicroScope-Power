@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1140" viewBox="0 0 1600 1140" role="img" aria-labelledby="title desc">
+<title id="title">MicroScope Power 程序框架</title>
+<desc id="desc">RP2040 Core 1 负责 ADS8866 采样和自动量程，通过波形帧队列或两秒滑动统计向 Core 0 交付数据。Core 0 负责启动、WebUSB、OLED、本地控制、电压监测和参数保存。独立浏览器上位机完成校准、分析、绘图与导出。运行采集与空闲监测互斥。</desc>
+<defs>
+  <marker id="blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#2563eb"/></marker>
+  <marker id="green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#0d9488"/></marker>
+  <marker id="gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#94a3b8"/></marker>
+  <marker id="orange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#ea580c"/></marker>
+</defs>
+<g font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif">
+<rect width="1600" height="1140" fill="#f8fafc"/>
+
+<text x="50" y="58" font-size="34" fill="#0f172a" font-weight="700" text-anchor="start">MicroScope Power</text>
+<text x="395" y="58" font-size="30" fill="#0f172a" font-weight="600" text-anchor="start">程序框架</text>
+<text x="50" y="94" font-size="21" fill="#64748b" font-weight="400" text-anchor="start">RP2040 双核固件与独立 WebUSB 上位机的数据流和职责</text>
+<rect x="40" y="130" width="1040" height="885" rx="22" fill="#fff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="65" y="165" font-size="23" fill="#0f172a" font-weight="600" text-anchor="start">设备固件  /  Pico SDK</text>
+<rect x="60" y="190" width="460" height="605" rx="18" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5"/>
+<rect x="560" y="190" width="500" height="605" rx="18" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="1.5"/>
+<text x="85" y="227" font-size="23" fill="#1d4ed8" font-weight="600" text-anchor="start">CORE 1 · 采样与量程管理</text>
+<text x="585" y="227" font-size="23" fill="#047857" font-weight="600" text-anchor="start">CORE 0 · 主循环与交互</text>
+<rect x="1120" y="190" width="420" height="825" rx="18" fill="#fff7ed" stroke="#fed7aa" stroke-width="1.5"/>
+<text x="1145" y="227" font-size="23" fill="#c2410c" font-weight="600" text-anchor="start">浏览器 · ModuSignal</text>
+<text x="1145" y="260" font-size="20" fill="#9a3412" font-weight="400" text-anchor="start">独立 WebUSB 上位机</text>
+<text x="1145" y="295" font-size="16" fill="#9a3412" font-weight="400" text-anchor="start">app.js · commands.js · protocol.js</text>
+<path d="M290 375 V440" fill="none" stroke="#2563eb" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#blue)"/>
+<text x="308" y="411" font-size="17" fill="#2563eb" font-weight="400" text-anchor="start">采集运行</text>
+<path d="M100 312 H80 V715 H100" fill="none" stroke="#0d9488" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#green)"/>
+<text x="88" y="618" font-size="17" fill="#0f766e" font-weight="400" text-anchor="start">空闲</text>
+<path d="M480 500 H600" fill="none" stroke="#2563eb" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#blue)"/>
+<text x="540" y="478" font-size="16" fill="#2563eb" font-weight="400" text-anchor="middle">8 帧队列</text>
+<path d="M480 715 H600" fill="none" stroke="#0d9488" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#green)"/>
+<text x="540" y="693" font-size="16" fill="#0f766e" font-weight="400" text-anchor="middle">统计快照</text>
+<path d="M810 375 V440" fill="none" stroke="#94a3b8" stroke-width="2.5" stroke-linejoin="round" stroke-dasharray="7 6" marker-end="url(#gray)"/>
+<text x="828" y="411" font-size="17" fill="#64748b" font-weight="400" text-anchor="start">任务调度</text>
+<path d="M600 312 H480" fill="none" stroke="#94a3b8" stroke-width="2.5" stroke-linejoin="round" stroke-dasharray="7 6" marker-end="url(#gray)"/>
+<text x="540" y="290" font-size="16" fill="#64748b" font-weight="400" text-anchor="middle">采样控制</text>
+<path d="M1020 312 H1040 V615 H810 V650" fill="none" stroke="#94a3b8" stroke-width="2.5" stroke-linejoin="round" stroke-dasharray="7 6" marker-end="url(#gray)"/>
+<text x="862" y="602" font-size="17" fill="#64748b" font-weight="400" text-anchor="start">空闲时更新本地 UI</text>
+<path d="M1020 500 H1160" fill="none" stroke="#ea580c" stroke-width="2.5" stroke-linejoin="round" marker-start="url(#orange)" marker-end="url(#orange)"/>
+<text x="1090" y="476" font-size="17" fill="#c2410c" font-weight="400" text-anchor="middle">WebUSB</text>
+<text x="1090" y="534" font-size="16" fill="#c2410c" font-weight="400" text-anchor="middle">双向通信</text>
+<path d="M1330 570 V650" fill="none" stroke="#ea580c" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#orange)"/>
+<text x="1350" y="618" font-size="16" fill="#c2410c" font-weight="400" text-anchor="start">原始样本 / 状态</text>
+<path d="M1330 790 V860" fill="none" stroke="#ea580c" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#orange)"/>
+<rect x="100" y="250" width="380" height="125" rx="14" fill="#fff" stroke="#93c5fd" stroke-width="1.5"/>
+<text x="290.0" y="284" font-size="22" fill="#0f172a" font-weight="600" text-anchor="middle">ADS8866 电流采样</text>
+<text x="290.0" y="315" font-size="19" fill="#475569" font-weight="400" text-anchor="middle">INA296A3 · 1Ω / 10Ω 量程</text>
+<text x="290.0" y="342" font-size="19" fill="#475569" font-weight="400" text-anchor="middle">ads8866.c · sampler.c</text>
+<rect x="100" y="440" width="380" height="130" rx="14" fill="#fff" stroke="#93c5fd" stroke-width="1.5"/>
+<text x="290.0" y="474" font-size="22" fill="#0f172a" font-weight="600" text-anchor="middle">上位机采集模式</text>
+<text x="290.0" y="505" font-size="19" fill="#475569" font-weight="400" text-anchor="middle">原始 ADC · 每帧 256 点</text>
+<text x="290.0" y="532" font-size="19" fill="#475569" font-weight="400" text-anchor="middle">时间戳 / 序号 / 间断标记</text>
+<rect x="100" y="650" width="380" height="140" rx="14" fill="#fff" stroke="#93c5fd" stroke-width="1.5"/>
+<text x="290.0" y="684" font-size="22" fill="#0f172a" font-weight="600" text-anchor="middle">空闲本地监测模式</text>
+<text x="290.0" y="715" font-size="18" fill="#475569" font-weight="400" text-anchor="middle">后台连续采样，保留脉冲贡献</text>
+<text x="290.0" y="742" font-size="18" fill="#475569" font-weight="400" text-anchor="middle">40 × 50ms → 2 秒滑动统计</text>
+<text x="290.0" y="769" font-size="18" fill="#475569" font-weight="400" text-anchor="middle">切换量程 / 异常后重建窗口</text>
+<rect x="600" y="250" width="420" height="125" rx="14" fill="#fff" stroke="#6ee7b7" stroke-width="1.5"/>
+<text x="810.0" y="284" font-size="22" fill="#0f172a" font-weight="600" text-anchor="middle">启动初始化与状态机</text>
+<text x="810.0" y="315" font-size="19" fill="#475569" font-weight="400" text-anchor="middle">main.c</text>
+<text x="810.0" y="342" font-size="19" fill="#475569" font-weight="400" text-anchor="middle">USB 等待 / 空闲 / 运行 / 故障</text>
+<rect x="600" y="440" width="420" height="130" rx="14" fill="#fff" stroke="#6ee7b7" stroke-width="1.5"/>
+<text x="810.0" y="474" font-size="22" fill="#0f172a" font-weight="600" text-anchor="middle">WebUSB 通信与协议</text>
+<text x="810.0" y="505" font-size="18" fill="#475569" font-weight="400" text-anchor="middle">命令 / STATUS / 530B 波形帧</text>
+<text x="810.0" y="532" font-size="18" fill="#475569" font-weight="400" text-anchor="middle">usb_webusb.c · protocol.c</text>
+<rect x="600" y="650" width="420" height="140" rx="14" fill="#fff" stroke="#6ee7b7" stroke-width="1.5"/>
+<text x="810.0" y="684" font-size="22" fill="#0f172a" font-weight="600" text-anchor="middle">OLED 显示与本地交互</text>
+<text x="810.0" y="715" font-size="19" fill="#475569" font-weight="400" text-anchor="middle">电压 / 电流，两位小数</text>
+<text x="810.0" y="742" font-size="19" fill="#475569" font-weight="400" text-anchor="middle">轻度平滑 · 0.05μA 显示滞回</text>
+<text x="810.0" y="769" font-size="19" fill="#475569" font-weight="400" text-anchor="middle">local_ui.c</text>
+<rect x="1160" y="440" width="340" height="130" rx="14" fill="#fff" stroke="#fdba74" stroke-width="1.5"/>
+<text x="1330.0" y="474" font-size="22" fill="#0f172a" font-weight="600" text-anchor="middle">连接、命令与拆包</text>
+<text x="1330.0" y="505" font-size="19" fill="#475569" font-weight="400" text-anchor="middle">WebUSB · 命令队列</text>
+<text x="1330.0" y="532" font-size="19" fill="#475569" font-weight="400" text-anchor="middle">文本与波形帧解析</text>
+<rect x="1160" y="650" width="340" height="140" rx="14" fill="#fff" stroke="#fdba74" stroke-width="1.5"/>
+<text x="1330.0" y="684" font-size="22" fill="#0f172a" font-weight="600" text-anchor="middle">缓存、校准与分析</text>
+<text x="1330.0" y="715" font-size="18" fill="#475569" font-weight="400" text-anchor="middle">设备时间轴 / 电流换算</text>
+<text x="1330.0" y="742" font-size="18" fill="#475569" font-weight="400" text-anchor="middle">窗口统计 / 可选低通</text>
+<text x="1330.0" y="769" font-size="18" fill="#475569" font-weight="400" text-anchor="middle">功率与累计能量估算</text>
+<rect x="1160" y="860" width="340" height="125" rx="14" fill="#fff" stroke="#fdba74" stroke-width="1.5"/>
+<text x="1330.0" y="894" font-size="22" fill="#0f172a" font-weight="600" text-anchor="middle">波形交互与导出</text>
+<text x="1330.0" y="925" font-size="18" fill="#475569" font-weight="400" text-anchor="middle">Canvas 波形 / A、B 游标</text>
+<text x="1330.0" y="952" font-size="18" fill="#475569" font-weight="400" text-anchor="middle">缩放平移 / CSV、PNG</text>
+<text x="70" y="836" font-size="20" fill="#047857" font-weight="600" text-anchor="start">CORE 0 本地服务</text>
+<rect x="70" y="860" width="300" height="125" rx="14" fill="#fff" stroke="#a7f3d0" stroke-width="1.5"/>
+<text x="220.0" y="894" font-size="22" fill="#0f172a" font-weight="600" text-anchor="middle">ADC0 电压监测</text>
+<text x="220.0" y="925" font-size="16" fill="#475569" font-weight="400" text-anchor="middle">16 次平均 · STATUS 约100ms</text>
+<text x="220.0" y="952" font-size="16" fill="#475569" font-weight="400" text-anchor="middle">adc_voltage.c</text>
+<rect x="405" y="860" width="300" height="125" rx="14" fill="#fff" stroke="#a7f3d0" stroke-width="1.5"/>
+<text x="555.0" y="894" font-size="22" fill="#0f172a" font-weight="600" text-anchor="middle">本地外设驱动</text>
+<text x="555.0" y="925" font-size="18" fill="#475569" font-weight="400" text-anchor="middle">旋钮 / OLED / DAC-LDO</text>
+<text x="555.0" y="952" font-size="18" fill="#475569" font-weight="400" text-anchor="middle">蜂鸣器 · 步进与提示音</text>
+<rect x="740" y="860" width="300" height="125" rx="14" fill="#fff" stroke="#a7f3d0" stroke-width="1.5"/>
+<text x="890.0" y="894" font-size="22" fill="#0f172a" font-weight="600" text-anchor="middle">Flash 参数保存</text>
+<text x="890.0" y="925" font-size="17" fill="#475569" font-weight="400" text-anchor="middle">双量程零点 / 电阻 / DAC</text>
+<text x="890.0" y="952" font-size="17" fill="#475569" font-weight="400" text-anchor="middle">app_settings.c</text>
+<text x="50" y="1060" font-size="20" fill="#0f172a" font-weight="600" text-anchor="start">运行规则</text>
+<text x="160" y="1060" font-size="20" fill="#475569" font-weight="400" text-anchor="start">电流采集与本地监测互斥；上位机采集时暂停 OLED 和旋钮更新。</text>
+<text x="50" y="1101" font-size="18" fill="#64748b" font-weight="400" text-anchor="start">蓝色：原始波形     绿色：本地均流     橙色：浏览器数据流     灰色虚线：调度与控制</text>
+</g></svg>

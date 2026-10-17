@@ -22,6 +22,8 @@ static atomic_uint conversion_count;
 static unsigned conversion_attempt;
 static unsigned fail_conversion_at;
 static unsigned stop_after_conversion;
+static bool fixed_sample_enabled;
+static uint16_t fixed_sample;
 
 void critical_section_init(critical_section_t *section) {
     assert(pthread_mutex_init(&section->mutex, NULL) == 0);
@@ -62,7 +64,8 @@ bool ads8866_try_finish_conversion(uint16_t *sample) {
     conversion_attempt++;
     if (conversion_attempt == stop_after_conversion) { g_running = false; }
     if (conversion_attempt == fail_conversion_at) { return false; }
-    *sample = conversion_attempt < fail_conversion_at ? 111 : 222;
+    *sample = fixed_sample_enabled ? fixed_sample :
+              conversion_attempt < fail_conversion_at ? 111 : 222;
     return true;
 }
 
@@ -78,10 +81,12 @@ static void reset_fixture(void) {
     conversion_attempt = 0;
     fail_conversion_at = 0;
     stop_after_conversion = 0;
+    fixed_sample_enabled = false;
     mock_range = ADS8866_RANGE_1_OHM;
     queue_reset_locked();
     reset_current_frame();
     reset_auto_range_state();
+    local_current_reset_locked();
 }
 static void emit_block(uint16_t value, uint32_t start) {
     for (unsigned i = 0; i < SAMPLE_BLOCK_SIZE; ++i) {
@@ -199,6 +204,177 @@ static void test_unchanged_settings_preserve_frames(void) {
     assert(g_queue.count == 1 && g_next_seq == 1);
     sampler_stop();
 }
+
+static void idle_sample_at(uint32_t now_us) {
+    atomic_store(&mock_time, now_us);
+    critical_section_enter_blocking(&g_queue_lock);
+    sampler_core_local_tick_locked();
+    critical_section_exit(&g_queue_lock);
+}
+
+static void fill_local_window(uint32_t start_us) {
+    for (unsigned i = 0; i <= 20000u; ++i) {
+        idle_sample_at(start_us + i * 100u);
+    }
+}
+
+static void test_idle_sliding_window_and_clock_wrap(void) {
+    reset_fixture();
+    fixed_sample_enabled = true;
+    fixed_sample = 32768u;
+    g_zero_code_1_ohm = 32000u;
+    sampler_local_current_t snapshot;
+    assert(!sampler_get_local_current(&snapshot));
+    const uint32_t start_us = UINT32_MAX - 500000u;
+    for (unsigned i = 0; i < 20000u; ++i) { idle_sample_at(start_us + i * 100u); }
+    assert(!sampler_get_local_current(&snapshot));
+    /* Wall clock closes the final sampled bucket without inventing a point
+       at the two-second boundary. This also crosses the 32-bit timer wrap. */
+    atomic_store(&mock_time, start_us + 2000000u);
+    assert(sampler_get_local_current(&snapshot));
+    assert(snapshot.sample_count == 20000u);
+    assert(snapshot.code_sum == (uint64_t)32768u * 20000u);
+    assert(snapshot.range == ADS8866_RANGE_1_OHM && snapshot.zero_code == 32000u);
+    assert(snapshot.age_us < 100u);
+
+    /* New samples remain outside the published sum until their bucket closes. */
+    const uint64_t old_sum = snapshot.code_sum;
+    idle_sample_at(start_us + 2000000u);
+    fixed_sample = 50000u;
+    for (unsigned i = 1; i < 500u; ++i) {
+        idle_sample_at(start_us + 2000000u + i * 100u);
+    }
+    assert(sampler_get_local_current(&snapshot) && snapshot.code_sum == old_sum);
+    idle_sample_at(start_us + 2050000u);
+    assert(sampler_get_local_current(&snapshot));
+    assert(snapshot.sample_count == 20000u && snapshot.code_sum > old_sum);
+    assert(g_queue.count == 0u && g_next_seq == 0u && g_current_count == 0u);
+
+    /* No stale completed window is exposed across a real sampling pause. */
+    atomic_fetch_add(&mock_time, LOCAL_MAX_GAP_US + 1u);
+    assert(!sampler_get_local_current(&snapshot));
+    idle_sample_at(start_us + 2060000u);
+    assert(!sampler_get_local_current(&snapshot));
+    assert(g_local_bucket_count == 0u);
+}
+
+static void test_idle_failure_and_configuration_reset(void) {
+    reset_fixture();
+    fixed_sample_enabled = true;
+    fixed_sample = 12345u;
+    sampler_local_current_t snapshot;
+    fill_local_window(100u);
+    assert(sampler_get_local_current(&snapshot));
+    fail_conversion_at = conversion_attempt + 1u;
+    idle_sample_at(2000200u);
+    assert(!sampler_get_local_current(&snapshot));
+    fixed_sample = 23456u;
+    fill_local_window(2000300u);
+    assert(sampler_get_local_current(&snapshot));
+    assert(snapshot.code_sum == (uint64_t)23456u * snapshot.sample_count);
+
+    sampler_set_zero_code_for_range(ADS8866_RANGE_1_OHM, 100u);
+    assert(!sampler_get_local_current(&snapshot));
+    assert(g_local_bucket_count == 0u && g_local_partial.sample_count == 0u);
+    fill_local_window(4100000u);
+    assert(sampler_get_local_current(&snapshot) && snapshot.zero_code == 100u);
+    sampler_reset_local_current();
+    assert(!sampler_get_local_current(&snapshot));
+
+    fill_local_window(6200000u);
+    assert(sampler_get_local_current(&snapshot));
+    assert(sampler_start());
+    assert(!sampler_get_local_current(&snapshot));
+    sampler_stop();
+    assert(!sampler_get_local_current(&snapshot));
+    assert(g_local_bucket_count == 0u && g_local_partial.sample_count == 0u);
+}
+
+static void test_idle_autorange_discards_settling_without_stream_frames(void) {
+    reset_fixture();
+    g_auto_range = true;
+    fixed_sample_enabled = true;
+    fixed_sample = 10u;
+    unsigned count = LOCAL_RANGE_BATCH_SAMPLES * AUTO_RANGE_1_TO_10_CONFIRM_FRAMES;
+    for (unsigned i = 0; i < count; ++i) { idle_sample_at(i * 100u); }
+    assert(mock_range == ADS8866_RANGE_10_OHM);
+    sampler_local_current_t snapshot;
+    assert(!sampler_get_local_current(&snapshot));
+    assert(g_local_settle_samples == LOCAL_SETTLE_SAMPLES);
+    for (unsigned i = 0; i < LOCAL_SETTLE_SAMPLES; ++i) {
+        idle_sample_at((count + i) * 100u);
+    }
+    assert(g_local_partial.sample_count == 0u && g_local_settle_samples == 0u);
+    idle_sample_at((count + LOCAL_SETTLE_SAMPLES) * 100u);
+    assert(g_local_partial.sample_count == 1u);
+    assert(g_queue.count == 0u && g_next_seq == 0u && g_pending_flags == 0u);
+}
+
+static void test_local_zero_uses_current_window_mean_for_only_its_range(void) {
+    for (unsigned selected = 0; selected < 2u; ++selected) {
+        reset_fixture();
+        mock_range = (ads8866_range_t)selected;
+        g_zero_code_1_ohm = 321u;
+        g_zero_code_10_ohm = 654u;
+        g_last_sample = 60000u; /* A stale stream sample must never be the source. */
+        fixed_sample_enabled = true;
+        for (unsigned i = 0; i < 20000u; ++i) {
+            fixed_sample = (uint16_t)(1200u + (i & 1u));
+            idle_sample_at(100u + i * 100u);
+        }
+        atomic_store(&mock_time, 2000100u);
+        g_range_up_count = 3u;
+        g_range_down_count = 1u;
+        g_range_settle_frames = 2u;
+        assert(sampler_zero_local_current()); /* Mean 1200.5 rounds to 1201. */
+        assert(g_zero_code_1_ohm == (selected == ADS8866_RANGE_1_OHM ? 1201u : 321u));
+        assert(g_zero_code_10_ohm == (selected == ADS8866_RANGE_10_OHM ? 1201u : 654u));
+        assert(g_last_sample == 60000u && mock_range == (ads8866_range_t)selected);
+        assert(g_range_up_count == 0u && g_range_down_count == 0u &&
+               g_range_settle_frames == 0u && g_local_settle_samples == 0u);
+        sampler_local_current_t snapshot;
+        assert(!sampler_get_local_current(&snapshot));
+        assert(!sampler_zero_local_current()); /* Rebuild a complete window first. */
+        fixed_sample = 1201u;
+        fill_local_window(2100000u);
+        assert(sampler_zero_local_current()); /* An unchanged zero is still successful. */
+    }
+}
+
+static void test_local_zero_rejects_unavailable_stale_or_mismatched_data(void) {
+    reset_fixture();
+    assert(!sampler_zero_local_current());
+    fixed_sample_enabled = true;
+    fixed_sample = 500u;
+    fill_local_window(100u);
+    g_running = true;
+    assert(!sampler_zero_local_current());
+    g_running = false;
+    g_capture_active = true;
+    assert(!sampler_zero_local_current());
+    g_capture_active = false;
+
+    /* Simulate configuration changes immediately after a mature snapshot;
+       validation must compare live metadata under the zero operation's lock. */
+    g_zero_code_1_ohm = 123u;
+    assert(!sampler_zero_local_current() && g_zero_code_1_ohm == 123u);
+    g_zero_code_1_ohm = 0u;
+    mock_range = ADS8866_RANGE_10_OHM;
+    assert(!sampler_zero_local_current());
+    assert(g_zero_code_1_ohm == 0u && g_zero_code_10_ohm == 0u);
+    mock_range = ADS8866_RANGE_1_OHM;
+    atomic_fetch_add(&mock_time, LOCAL_MAX_GAP_US + 1u);
+    assert(!sampler_zero_local_current() && g_zero_code_1_ohm == 0u);
+
+    reset_fixture();
+    fixed_sample_enabled = true;
+    fixed_sample = 700u;
+    fill_local_window(100u);
+    fail_conversion_at = conversion_attempt + 1u;
+    idle_sample_at(2000200u);
+    assert(!sampler_zero_local_current());
+    assert(g_zero_code_1_ohm == 0u && g_zero_code_10_ohm == 0u);
+}
 static void wait_for(atomic_bool *condition) {
     struct timespec interval = {.tv_sec = 0, .tv_nsec = 1000000};
     for (unsigned i = 0; i < 2000 && !atomic_load(condition); ++i) { nanosleep(&interval, NULL); }
@@ -229,8 +405,10 @@ static void test_stop_acknowledges_claimed_capture(void) {
     sampler_stop();
     assert(!g_capture_active && !sampler_is_running() && !g_auto_range);
     unsigned stopped_conversions = atomic_load(&conversion_count);
+    uint16_t stopped_seq = sampler_get_next_seq();
     nanosleep(&interval, NULL);
-    assert(atomic_load(&conversion_count) == stopped_conversions);
+    assert(atomic_load(&conversion_count) > stopped_conversions);
+    assert(sampler_get_next_seq() == stopped_seq); /* Idle work publishes no stream frames. */
     for (unsigned i = 0; i < 500; ++i) { assert(sampler_start()); sampler_stop(); }
     assert(!g_capture_active);
     atomic_store(&core_shutdown, true);
@@ -245,7 +423,12 @@ int main(void) {
     test_capture_spi_failure();
     test_timing_overrun_preserves_continuous_capture();
     test_unchanged_settings_preserve_frames();
+    test_idle_sliding_window_and_clock_wrap();
+    test_idle_failure_and_configuration_reset();
+    test_idle_autorange_discards_settling_without_stream_frames();
+    test_local_zero_uses_current_window_mean_for_only_its_range();
+    test_local_zero_rejects_unavailable_stale_or_mismatched_data();
     test_stop_acknowledges_claimed_capture();
-    puts("sampler: zero-aware range, settle, invalid-frame gap, overflow/session and start/stop tests passed");
+    puts("sampler: stream boundaries, idle window/wrap, atomic local zero, timeout/config resets and start/stop passed");
     return 0;
 }

@@ -17,6 +17,20 @@ typedef struct {
     volatile uint32_t dropped;
 } frame_queue_t;
 
+typedef struct {
+    uint64_t code_sum;
+    uint32_t sample_count;
+    uint32_t age_us;
+    ads8866_range_t range;
+    uint16_t zero_code;
+} sampler_local_current_t;
+
+/* Two seconds of completed idle-monitor buckets; no active stream samples. */
+bool sampler_get_local_current(sampler_local_current_t *out);
+void sampler_reset_local_current(void);
+/* Atomically zero only the current range from a fresh, complete idle window. */
+bool sampler_zero_local_current(void);
+
 void sampler_init(void);
 bool sampler_set_rate(uint32_t sample_rate);
 uint32_t sampler_get_rate(void);

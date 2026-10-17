@@ -401,7 +401,7 @@ int main(void) {
         refresh_output_voltage(false);
         if (!sampler_is_running()) {
             local_ui_update(to_ms_since_boot(get_absolute_time()));
-            if (local_ui_take_output_save_request()) {
+            if (local_ui_take_settings_save_request()) {
                 request_settings_save();
             }
             if (g_settings_save_pending) {
