@@ -102,12 +102,23 @@ static void test_zero_aware_autorange(void) {
     assert(mock_range == ADS8866_RANGE_10_OHM);
     update_auto_range(0, 10);
     assert(mock_range == ADS8866_RANGE_10_OHM);
+
+    /* Low-current capture with the stored 10 ohm zero at 762. */
+    g_zero_code_10_ohm = 762;
+    update_auto_range(430, 585);
+    assert(mock_range == ADS8866_RANGE_10_OHM);
+    update_auto_range(430, 30762);
+    assert(mock_range == ADS8866_RANGE_1_OHM);
+
+    mock_range = ADS8866_RANGE_10_OHM;
+    g_zero_code_10_ohm = 50000;
+    update_auto_range(50000, 60000);
+    assert(mock_range == ADS8866_RANGE_1_OHM);
+
+    mock_range = ADS8866_RANGE_10_OHM;
     g_zero_code_10_ohm = 32768;
     update_auto_range(0, 10);
     assert(mock_range == ADS8866_RANGE_1_OHM);
-    assert(!ads8866_codes_at_rail(0, 100, 0));
-    assert(ads8866_codes_at_rail(0, 100, 32768));
-    assert(ads8866_codes_at_rail(1000, 65535, 0));
 }
 static void test_settle_and_gap(void) {
     reset_fixture();

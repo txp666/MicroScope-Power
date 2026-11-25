@@ -12,6 +12,7 @@
 #define SAMPLE_PERIOD_Q_SHIFT 16u
 #define AUTO_RANGE_10_TO_1_DELTA_CODE 30000u
 #define AUTO_RANGE_1_TO_10_DELTA_CODE 1800u
+#define AUTO_RANGE_UPPER_RAIL_CODE 60000u
 #define AUTO_RANGE_10_TO_1_CONFIRM_FRAMES 1u
 #define AUTO_RANGE_1_TO_10_CONFIRM_FRAMES 64u
 #define AUTO_RANGE_SETTLE_FRAMES 6u
@@ -132,10 +133,12 @@ static void update_auto_range(uint16_t min_code, uint16_t max_code) {
     const uint16_t max_delta = code_distance(max_code, zero) > code_distance(min_code, zero)
                                    ? code_distance(max_code, zero)
                                    : code_distance(min_code, zero);
+    // This frontend measures positive current. Codes near ground can be normal
+    // at low current, even when the stored zero is above those codes.
+    const bool near_upper_rail = max_code >= AUTO_RANGE_UPPER_RAIL_CODE && zero < AUTO_RANGE_UPPER_RAIL_CODE;
 
     if (range == ADS8866_RANGE_10_OHM) {
-        if (ads8866_codes_at_rail(min_code, max_code, zero) ||
-            max_delta >= AUTO_RANGE_10_TO_1_DELTA_CODE) {
+        if (near_upper_rail || max_delta >= AUTO_RANGE_10_TO_1_DELTA_CODE) {
             if (g_range_down_count < AUTO_RANGE_10_TO_1_CONFIRM_FRAMES) {
                 g_range_down_count++;
             }
@@ -148,8 +151,7 @@ static void update_auto_range(uint16_t min_code, uint16_t max_code) {
         return;
     }
 
-    if (max_delta <= AUTO_RANGE_1_TO_10_DELTA_CODE &&
-        !ads8866_codes_at_rail(min_code, max_code, zero)) {
+    if (max_delta <= AUTO_RANGE_1_TO_10_DELTA_CODE && !near_upper_rail) {
         if (g_range_up_count < AUTO_RANGE_1_TO_10_CONFIRM_FRAMES) {
             g_range_up_count++;
         }
