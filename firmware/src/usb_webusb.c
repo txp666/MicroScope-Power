@@ -52,9 +52,8 @@ static void reset_session_buffers(void) {
     g_frame_sent = 0;
     g_frame_pending = false;
     tud_vendor_read_flush();
-    // TinyUSB bundled with Pico SDK has no public TX-clear API. The WebUSB
-    // client resets the USB device before opening a new command session; that
-    // bus reset also clears any old TinyUSB FIFO/endpoint bytes.
+    // This version of TinyUSB has no public TX-clear API. The WebUSB client
+    // resets the bus on supported platforms or drains old TX data on Windows.
 }
 
 static void drain_tx(void) {
